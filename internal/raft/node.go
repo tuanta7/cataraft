@@ -2,8 +2,14 @@ package raft
 
 import (
 	"context"
+	"time"
 
+	"github.com/tuanta7/cataraft/pkg/randx"
 	pbv1 "github.com/tuanta7/cataraft/proto/gopb/v1"
+)
+
+const (
+	electionTimeout = 500 * time.Millisecond
 )
 
 type Node struct {
@@ -37,4 +43,9 @@ func (n *Node) RequestVote(ctx context.Context) {
 	}
 
 	_ = req
+}
+
+func (n *Node) randomTimeoutForNextElection() {
+	duration := randx.RandomDuration(150*time.Millisecond, 300*time.Millisecond)
+	time.Sleep(duration)
 }
