@@ -1,6 +1,9 @@
 .PHONY: buf
 BUF_VERSION?=1.64.0
 
+build:
+	go build ./cmd/cataraft
+
 buf-install:
 	go install github.com/bufbuild/buf/cmd/buf@v${BUF_VERSION}
 	buf --version

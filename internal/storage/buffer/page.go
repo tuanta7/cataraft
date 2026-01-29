@@ -1,14 +1,10 @@
 package buffer
 
-import "errors"
+import (
+	"errors"
 
-const (
-	PageSize = 8192 // 8KB
+	"github.com/tuanta7/cataraft/internal/config"
 )
-
-type Encoder interface {
-	Encode() []byte
-}
 
 type PageID struct {
 	fileName string
@@ -16,7 +12,7 @@ type PageID struct {
 }
 
 func (i *PageID) offset() int64 {
-	return i.pageNum * PageSize
+	return i.pageNum * config.PageSize
 }
 
 type Page struct {
@@ -26,11 +22,13 @@ type Page struct {
 	lsn     uint64
 }
 
-func NewPage(p Encoder) (*Page, error) {
-	data := p.Encode()
-	if len(data) != PageSize {
-		return nil, errors.New("page size not match")
+func (p *Page) Write(data []byte) error {
+	if len(data) > config.PageSize {
+		return errors.New("page size exceeded")
 	}
 
-	return &Page{data: data}, nil
+	// fill the rest of the page with zeros
+	p.data = append(data, make([]byte, config.PageSize-len(data))...)
+	p.isDirty = true
+	return nil
 }

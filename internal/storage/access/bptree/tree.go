@@ -9,3 +9,7 @@ func NewTree() *Tree {
 }
 
 func (t *Tree) Insert(key, value []byte) {}
+
+func (t *Tree) Encode() []byte {
+	return nil
+}
