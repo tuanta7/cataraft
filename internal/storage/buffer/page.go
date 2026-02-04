@@ -27,8 +27,18 @@ func (p *Page) Write(data []byte) error {
 		return errors.New("page size exceeded")
 	}
 
-	// fill the rest of the page with zeros
-	p.data = append(data, make([]byte, config.PageSize-len(data))...)
+	if p.data == nil || len(p.data) != config.PageSize {
+		p.data = make([]byte, config.PageSize)
+	}
+
+	copy(p.data, data)
+	if len(data) < config.PageSize {
+		// ensure tail is zeroed
+		for i := len(data); i < config.PageSize; i++ {
+			p.data[i] = 0
+		}
+	}
+
 	p.isDirty = true
 	return nil
 }

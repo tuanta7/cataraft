@@ -4,17 +4,17 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tuanta7/cataraft/internal/storage/buffer/strategy"
+	"github.com/tuanta7/cataraft/internal/config"
 )
 
 type Buffer struct {
 	capacity int
 	pages    map[PageID]*Page
 	disk     *DiskAdapter
-	strategy strategy.Eviction[PageID]
+	strategy PageEvictor
 }
 
-func NewBuffer(capacity int, strategy strategy.Eviction[PageID], adapter *DiskAdapter) *Buffer {
+func NewBuffer(capacity int, strategy PageEvictor, adapter *DiskAdapter) *Buffer {
 	return &Buffer{
 		capacity: capacity,
 		pages:    make(map[PageID]*Page),
@@ -29,7 +29,7 @@ func (b *Buffer) ReadPage(id PageID) (*Page, error) {
 		return page, nil
 	}
 
-	page := &Page{}
+	page := &Page{id: id, data: make([]byte, config.PageSize)}
 	err := b.disk.ReadPage(id, page.data)
 	if err != nil {
 		return nil, err

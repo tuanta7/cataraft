@@ -8,7 +8,6 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/tuanta7/cataraft/internal/storage/buffer"
-	"github.com/tuanta7/cataraft/internal/storage/buffer/strategy"
 	"github.com/tuanta7/cataraft/pkg/logger"
 	"github.com/tuanta7/cataraft/pkg/silent"
 	"github.com/urfave/cli/v3"
@@ -38,7 +37,7 @@ func main() {
 			}
 			defer slient.Close(diskAdapter)
 
-			lru := strategy.NewLRUList[buffer.PageID]()
+			lru := buffer.NewLRUList()
 			bf := buffer.NewBuffer(1000, lru, diskAdapter)
 
 			return bf.FlushAll()

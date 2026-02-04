@@ -28,7 +28,7 @@ func CloseWithContext(srv CloserWithContext, ctx context.Context) {
 func PanicOnErr(err error, msg ...string) {
 	if err != nil {
 		if len(msg) > 0 {
-			fmt.Printf("%s: %s\n", msg, err)
+			fmt.Printf("%s: %s\n", msg[0], err)
 		}
 		panic(err)
 	}

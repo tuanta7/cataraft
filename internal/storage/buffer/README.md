@@ -19,7 +19,7 @@ Cached pages available in memory can be reused under the assumption that no othe
 
 ## 2. Cache Eviction
 
-The page cache has a limited capacity and, sooner or later, to serve the new contents, old pages have to be evicted.
+The page cache has a limited capacity, to serve the new contents, old pages have to be evicted.
 
 ### Locking Pages in Cache
 
@@ -27,4 +27,16 @@ Locking pages in the cache is called **pinning**. Pages that have a high probabi
 
 ## 3. Page Replacement
 
+Pages should be evicted according to the eviction policy. It attempts to find pages that are least likely to be accessed again any time soon. When the page is evicted from the cache, the new page can be loaded in its place.
+
 ### 3.1. FIFO & LRU
+
+FIFO is the most naive strategy and is proved to be impractical for the most real-world systems. For example, the root and topmost-level pages are paged in first and, according to this algorithm, are the first candidates for eviction even though these pages are likely to paged in soon.
+
+LRU is a natural extension of the FIFO algorithm. It also maintains a queue of eviction candidates in insertion order, but allows to place a page back to the tail of the queue on repeated accesses, as if this was the first time it was paged in.
+
+- LRU caches can be implemented using doubly linked list, array or heap.
+- A hash map is often used to map keys to their locations in the list and detect duplication faster.
+
+> [!NOTE]
+> Updating references and relinking nodes on every access can become expensive in a concurrent environment.

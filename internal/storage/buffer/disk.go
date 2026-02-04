@@ -32,34 +32,58 @@ func NewDiskAdapter(baseDir string, direct bool) (*DiskAdapter, error) {
 }
 
 func (m *DiskAdapter) openFile(fn string) (*os.File, error) {
+	// use write lock to prevent concurrent file opens
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if f, ok := m.openedFiles[fn]; ok {
+		return f, nil
+	}
+
 	path := filepath.Join(m.baseDir, fn)
 	flags := os.O_RDWR | os.O_CREATE
 	if m.direct {
 		flags = flags | syscall.O_DIRECT
 	}
 
-	file, err := os.OpenFile(path, flags, 0644)
+	f, err := os.OpenFile(path, flags, 0644)
 	if err != nil {
 		return nil, err
 	}
 
-	m.mu.Lock()
-	m.openedFiles[fn] = file
-	m.mu.Unlock()
-
-	return file, nil
+	m.openedFiles[fn] = f
+	return f, nil
 }
 
 func (m *DiskAdapter) CloseFile(fn string) error {
-	path := filepath.Join(m.baseDir, fn)
-	return m.openedFiles[path].Close()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	f, ok := m.openedFiles[fn]
+	if !ok {
+		return os.ErrNotExist
+	}
+	delete(m.openedFiles, fn)
+
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (m *DiskAdapter) Close() error {
+	m.mu.Lock()
+	files := make([]*os.File, 0, len(m.openedFiles))
+	for k, f := range m.openedFiles {
+		files = append(files, f)
+		delete(m.openedFiles, k)
+	}
+	m.mu.Unlock()
+
 	var errs error
-	for _, file := range m.openedFiles {
-		err := file.Close()
-		if err != nil {
+	for _, file := range files {
+		if err := file.Close(); err != nil {
 			errs = errors.Join(errs, err)
 		}
 	}
@@ -70,39 +94,29 @@ func (m *DiskAdapter) Close() error {
 // ReadPage reads a page of data from the file associated with the given PageID into the provided page.
 func (m *DiskAdapter) ReadPage(id PageID, page []byte) error {
 	m.mu.RLock()
-	if file, ok := m.openedFiles[id.fileName]; ok {
-		m.mu.RUnlock()
-		if _, err := file.ReadAt(page, id.offset()); err != nil {
-			return err
-		}
-	}
+	file, ok := m.openedFiles[id.fileName]
 	m.mu.RUnlock()
+
+	if ok {
+		_, err := file.ReadAt(page, id.offset())
+		return err
+	}
 
 	file, err := m.openFile(id.fileName)
 	if err != nil {
 		return err
 	}
 
-	if _, err = file.ReadAt(page, id.offset()); err != nil {
-		return err
-	}
-
-	return nil
+	_, err = file.ReadAt(page, id.offset())
+	return err
 }
 
 func (m *DiskAdapter) WritePage(id PageID, page []byte) error {
-	m.mu.Lock()
-	file, ok := m.openedFiles[id.fileName]
-	if !ok {
-		m.mu.Unlock()
-		return os.ErrNotExist
-	}
-	m.mu.Unlock()
-
-	_, err := file.WriteAt(page, id.offset())
+	file, err := m.openFile(id.fileName)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	_, err = file.WriteAt(page, id.offset())
+	return err
 }
