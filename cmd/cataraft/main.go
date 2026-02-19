@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/tuanta7/cataraft/internal/storage/buffer"
+	"github.com/tuanta7/cataraft/internal/storage/disk"
 	"github.com/tuanta7/cataraft/pkg/logger"
 	"github.com/tuanta7/cataraft/pkg/silent"
 	"github.com/urfave/cli/v3"
@@ -31,14 +32,14 @@ func main() {
 			}
 			log.Info().Str("CATA_DATA", configDir).Msg("")
 
-			diskAdapter, err := buffer.NewDiskAdapter(configDir, false)
+			diskAdapter, err := disk.NewAdapter(configDir, false)
 			if err != nil {
 				return err
 			}
 			defer slient.Close(diskAdapter)
 
 			lru := buffer.NewLRUList()
-			bf := buffer.NewBuffer(1000, lru, diskAdapter)
+			bf := buffer.NewBuffer(1000, diskAdapter, lru)
 
 			return bf.FlushAll()
 		},

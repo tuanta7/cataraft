@@ -1,4 +1,4 @@
-package buffer
+package disk
 
 import (
 	"errors"
@@ -8,14 +8,14 @@ import (
 	"syscall"
 )
 
-type DiskAdapter struct {
+type Adapter struct {
 	mu          sync.RWMutex
 	baseDir     string
 	direct      bool
 	openedFiles map[string]*os.File
 }
 
-func NewDiskAdapter(baseDir string, direct bool) (*DiskAdapter, error) {
+func NewAdapter(baseDir string, direct bool) (*Adapter, error) {
 	_, err := os.Stat(baseDir)
 	if os.IsNotExist(err) {
 		err = os.MkdirAll(baseDir, 0755)
@@ -24,14 +24,14 @@ func NewDiskAdapter(baseDir string, direct bool) (*DiskAdapter, error) {
 		}
 	}
 
-	return &DiskAdapter{
+	return &Adapter{
 		baseDir:     baseDir,
 		direct:      direct,
 		openedFiles: make(map[string]*os.File),
 	}, nil
 }
 
-func (m *DiskAdapter) openFile(fn string) (*os.File, error) {
+func (m *Adapter) openFile(fn string) (*os.File, error) {
 	// use write lock to prevent concurrent file opens
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -55,7 +55,7 @@ func (m *DiskAdapter) openFile(fn string) (*os.File, error) {
 	return f, nil
 }
 
-func (m *DiskAdapter) CloseFile(fn string) error {
+func (m *Adapter) CloseFile(fn string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -72,7 +72,7 @@ func (m *DiskAdapter) CloseFile(fn string) error {
 	return nil
 }
 
-func (m *DiskAdapter) Close() error {
+func (m *Adapter) Close() error {
 	m.mu.Lock()
 	files := make([]*os.File, 0, len(m.openedFiles))
 	for k, f := range m.openedFiles {
@@ -92,31 +92,37 @@ func (m *DiskAdapter) Close() error {
 }
 
 // ReadPage reads a page of data from the file associated with the given PageID into the provided page.
-func (m *DiskAdapter) ReadPage(id PageID, page []byte) error {
+func (m *Adapter) ReadPage(id PageID) (*Page, error) {
 	m.mu.RLock()
 	file, ok := m.openedFiles[id.fileName]
 	m.mu.RUnlock()
 
+	page := NewPage(id)
+
 	if ok {
-		_, err := file.ReadAt(page, id.offset())
-		return err
+		_, err := file.ReadAt(page.data, id.offset())
+		return page, err
 	}
 
 	file, err := m.openFile(id.fileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = file.ReadAt(page, id.offset())
-	return err
+	_, err = file.ReadAt(page.data, id.offset())
+	return page, err
 }
 
-func (m *DiskAdapter) WritePage(id PageID, page []byte) error {
+func (m *Adapter) WritePage(id PageID, page *Page) error {
+	if page == nil {
+		return errors.New("page cannot be nil")
+	}
+
 	file, err := m.openFile(id.fileName)
 	if err != nil {
 		return err
 	}
 
-	_, err = file.WriteAt(page, id.offset())
+	_, err = file.WriteAt(page.data, id.offset())
 	return err
 }

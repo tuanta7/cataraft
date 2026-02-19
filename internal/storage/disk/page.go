@@ -1,4 +1,4 @@
-package buffer
+package disk
 
 import (
 	"errors"
@@ -17,9 +17,16 @@ func (i *PageID) offset() int64 {
 
 type Page struct {
 	id      PageID
-	data    []byte
 	isDirty bool
 	lsn     uint64
+	data    []byte
+}
+
+func NewPage(id PageID) *Page {
+	return &Page{
+		id:   id,
+		data: make([]byte, config.PageSize),
+	}
 }
 
 func (p *Page) Write(data []byte) error {
@@ -41,4 +48,8 @@ func (p *Page) Write(data []byte) error {
 
 	p.isDirty = true
 	return nil
+}
+
+func (p *Page) IsDirty() bool {
+	return p.isDirty
 }

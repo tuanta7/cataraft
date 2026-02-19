@@ -1,6 +1,8 @@
-package storage
+package access
 
 type Engine interface {
-	Set(key, value []byte)
-	Get(key []byte) []byte
+	Get(key []byte) ([]byte, error)
+	Insert(key, value []byte)
+	Delete(key []byte)
+	Encode() []byte
 }
