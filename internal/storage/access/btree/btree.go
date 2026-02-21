@@ -1,7 +1,7 @@
 package btree
 
 type Tree struct {
-	root *Node
+	root uint64
 }
 
 func NewTree() *Tree {
