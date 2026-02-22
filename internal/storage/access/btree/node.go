@@ -140,3 +140,7 @@ func (n Node) Decode() (*ParsedNode, error) {
 		keyCount: n.KeyCount(),
 	}, nil
 }
+
+func (n Node) leafInsert() {
+
+}

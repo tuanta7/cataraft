@@ -1,3 +1,7 @@
 package recovery
 
-type WAL struct{}
+type LogRecord struct{}
+
+type WriteAheadLog struct{}
+
+func (w *WriteAheadLog) Write(path string, data []byte) {}

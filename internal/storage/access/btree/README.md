@@ -183,11 +183,3 @@ Each KV pair is prefixed by its size. For internal nodes, the value size is 0.
 | key_size | val_size | key | val |
 |    2B    |    2B    | ... | ... |
 ```
-
-### 3.2. Crash Recovery
-
-#### Copy-on-write
-
-Copy-on-write atomically switches everything to the new version.
-
-#### Double-write
