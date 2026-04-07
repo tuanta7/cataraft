@@ -22,7 +22,8 @@ mock-install:
 	mockgen --version
 
 mock-gen:
-	mockgen -source=./storage/storage.go -destination=./mock/storage.go -package=mock
+	mockgen -source=./storage/storage.go -destination=./mocks/storage.go -package=mock
+	# mockgen -source=./raft/raft.go -destination=./mocks/raft.go -package=mock
 
 endian-check:
 	lscpu | grep "Byte Order"

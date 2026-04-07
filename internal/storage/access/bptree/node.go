@@ -1,4 +1,4 @@
-package btree
+package bptree
 
 const (
 	PageSize          = 4096 // 4KB
