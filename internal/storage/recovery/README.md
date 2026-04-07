@@ -36,7 +36,7 @@ Replacing data atomically by renaming files is only readers-writer atomic, it is
 
 Copy-on-write atomically switches everything to the new version.
 
-### 1.3. Double-write
+### 1.3. Double-write (with WAL)
 
 ## 2. Write-Ahead Log & Checksum
 
