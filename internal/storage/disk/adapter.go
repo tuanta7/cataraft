@@ -2,8 +2,11 @@ package disk
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 )
@@ -15,24 +18,60 @@ type Adapter struct {
 	openedFiles map[string]*os.File
 }
 
-func NewAdapter(baseDir string, direct bool) (*Adapter, error) {
-	_, err := os.Stat(baseDir)
+type AdapterConfig struct {
+	BaseDir string
+	Direct  bool
+}
+
+func NewAdapter(config AdapterConfig) (*Adapter, error) {
+	if config.BaseDir == "" {
+		return nil, errors.New("base directory is required")
+	}
+
+	baseDir := filepath.Clean(config.BaseDir)
+
+	info, err := os.Stat(baseDir)
 	if os.IsNotExist(err) {
 		err = os.MkdirAll(baseDir, 0755)
 		if err != nil {
 			return nil, err
 		}
+	} else if err != nil {
+		return nil, err
+	} else if !info.IsDir() {
+		return nil, fmt.Errorf("%q is not a directory", baseDir)
 	}
 
 	return &Adapter{
 		baseDir:     baseDir,
-		direct:      direct,
+		direct:      config.Direct,
 		openedFiles: make(map[string]*os.File),
 	}, nil
 }
 
+func (m *Adapter) filePath(fn string) (string, error) {
+	if fn == "" {
+		return "", errors.New("file name is required")
+	}
+
+	cleanName := filepath.Clean(fn)
+	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid file name %q", fn)
+	}
+	if filepath.IsAbs(cleanName) {
+		return "", fmt.Errorf("absolute file name %q is not allowed", fn)
+	}
+
+	path := filepath.Join(m.baseDir, cleanName)
+	parent := filepath.Dir(path)
+	if err := os.MkdirAll(parent, 0755); err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
+
 func (m *Adapter) openFile(fn string) (*os.File, error) {
-	// use write lock to prevent concurrent file opens
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -40,7 +79,11 @@ func (m *Adapter) openFile(fn string) (*os.File, error) {
 		return f, nil
 	}
 
-	path := filepath.Join(m.baseDir, fn)
+	path, err := m.filePath(fn)
+	if err != nil {
+		return nil, err
+	}
+
 	flags := os.O_RDWR | os.O_CREATE
 	if m.direct {
 		flags = flags | syscall.O_DIRECT
@@ -72,6 +115,64 @@ func (m *Adapter) CloseFile(fn string) error {
 	return nil
 }
 
+func (m *Adapter) SyncFile(fn string) error {
+	file, err := m.openFile(fn)
+	if err != nil {
+		return err
+	}
+
+	return file.Sync()
+}
+
+func (m *Adapter) FileSize(fn string) (int64, error) {
+	file, err := m.openFile(fn)
+	if err != nil {
+		return 0, err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		return 0, err
+	}
+
+	return info.Size(), nil
+}
+
+func (m *Adapter) ReadFileAt(fn string, offset int64, buf []byte) (int, error) {
+	if offset < 0 {
+		return 0, fmt.Errorf("invalid read offset %d", offset)
+	}
+
+	file, err := m.openFile(fn)
+	if err != nil {
+		return 0, err
+	}
+
+	return file.ReadAt(buf, offset)
+}
+
+func (m *Adapter) AppendFile(fn string, data []byte) (int64, error) {
+	file, err := m.openFile(fn)
+	if err != nil {
+		return 0, err
+	}
+
+	offset, err := file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0, err
+	}
+
+	n, err := file.Write(data)
+	if err != nil {
+		return 0, err
+	}
+	if n != len(data) {
+		return 0, io.ErrShortWrite
+	}
+
+	return offset, nil
+}
+
 func (m *Adapter) Close() error {
 	m.mu.Lock()
 	files := make([]*os.File, 0, len(m.openedFiles))
@@ -91,31 +192,56 @@ func (m *Adapter) Close() error {
 	return errs
 }
 
-// ReadPage reads a page of data from the file associated with the given PageID into the provided page.
-func (m *Adapter) ReadPage(id PageID) (*Page, error) {
+func (m *Adapter) Sync() error {
 	m.mu.RLock()
-	file, ok := m.openedFiles[id.fileName]
+	files := make([]*os.File, 0, len(m.openedFiles))
+	for _, f := range m.openedFiles {
+		files = append(files, f)
+	}
 	m.mu.RUnlock()
 
-	page := NewPage(id)
-
-	if ok {
-		_, err := file.ReadAt(page.data, id.offset())
-		return page, err
+	var errs error
+	for _, file := range files {
+		if err := file.Sync(); err != nil {
+			errs = errors.Join(errs, err)
+		}
 	}
 
+	return errs
+}
+
+// ReadPage reads a page of data from the file associated with the given PageID into the provided page.
+func (m *Adapter) ReadPage(id PageID) (*Page, error) {
+	if err := id.Validate(); err != nil {
+		return nil, err
+	}
+
+	page := NewPage(id)
 	file, err := m.openFile(id.fileName)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = file.ReadAt(page.data, id.offset())
-	return page, err
+	n, err := file.ReadAt(page.data, id.offset())
+	switch {
+	case err == nil:
+		return page, nil
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		for i := n; i < len(page.data); i++ {
+			page.data[i] = 0
+		}
+		return page, nil
+	default:
+		return nil, err
+	}
 }
 
 func (m *Adapter) WritePage(id PageID, page *Page) error {
 	if page == nil {
 		return errors.New("page cannot be nil")
+	}
+	if err := id.Validate(); err != nil {
+		return err
 	}
 
 	file, err := m.openFile(id.fileName)
@@ -123,6 +249,15 @@ func (m *Adapter) WritePage(id PageID, page *Page) error {
 		return err
 	}
 
-	_, err = file.WriteAt(page.data, id.offset())
-	return err
+	page.id = id
+	n, err := file.WriteAt(page.data, id.offset())
+	if err != nil {
+		return err
+	}
+	if n != len(page.data) {
+		return io.ErrShortWrite
+	}
+
+	page.isDirty = false
+	return nil
 }

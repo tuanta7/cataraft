@@ -1,7 +1,9 @@
 package disk
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 
 	"github.com/tuanta7/cataraft/internal/config"
 )
@@ -11,14 +13,40 @@ type PageID struct {
 	pageNum  int64
 }
 
-func (i *PageID) offset() int64 {
+func NewPageID(fileName string, pageNum int64) PageID {
+	return PageID{
+		fileName: fileName,
+		pageNum:  pageNum,
+	}
+}
+
+func (i PageID) Validate() error {
+	if i.fileName == "" {
+		return errors.New("file name is required")
+	}
+	if i.pageNum < 0 {
+		return fmt.Errorf("invalid page number %d", i.pageNum)
+	}
+
+	return nil
+}
+
+func (i PageID) offset() int64 {
 	return i.pageNum * config.PageSize
+}
+
+func (i PageID) FileName() string {
+	return i.fileName
+}
+
+func (i PageID) PageNum() int64 {
+	return i.pageNum
 }
 
 type Page struct {
 	id      PageID
 	isDirty bool
-	lsn     uint64
+	lsn     uint64 // log sequence number
 	data    []byte
 }
 
@@ -30,6 +58,29 @@ func NewPage(id PageID) *Page {
 }
 
 func (p *Page) Write(data []byte) error {
+	return p.WriteAt(0, data)
+}
+
+func (p *Page) WriteAt(offset int, data []byte) error {
+	if offset < 0 || offset > config.PageSize {
+		return fmt.Errorf("invalid write offset %d", offset)
+	}
+
+	if offset+len(data) > config.PageSize {
+		return errors.New("page size exceeded")
+	}
+
+	if p.data == nil || len(p.data) != config.PageSize {
+		p.data = make([]byte, config.PageSize)
+	}
+
+	copy(p.data[offset:], data)
+	p.isDirty = true
+	return nil
+}
+
+// Reset the page with the given data.
+func (p *Page) Reset(data []byte) error {
 	if len(data) > config.PageSize {
 		return errors.New("page size exceeded")
 	}
@@ -38,13 +89,8 @@ func (p *Page) Write(data []byte) error {
 		p.data = make([]byte, config.PageSize)
 	}
 
+	clear(p.data)
 	copy(p.data, data)
-	if len(data) < config.PageSize {
-		// ensure tail is zeroed
-		for i := len(data); i < config.PageSize; i++ {
-			p.data[i] = 0
-		}
-	}
 
 	p.isDirty = true
 	return nil
@@ -52,4 +98,21 @@ func (p *Page) Write(data []byte) error {
 
 func (p *Page) IsDirty() bool {
 	return p.isDirty
+}
+
+func (p *Page) ID() PageID {
+	return p.id
+}
+
+func (p *Page) LSN() uint64 {
+	return p.lsn
+}
+
+func (p *Page) SetLSN(lsn uint64) {
+	p.lsn = lsn
+}
+
+func (p *Page) Data() []byte {
+	// Return a copy of the data to prevent external modification.
+	return bytes.Clone(p.data)
 }

@@ -7,80 +7,134 @@ import (
 	"github.com/tuanta7/cataraft/internal/storage/disk"
 )
 
-type PageEvictor interface {
-	OnAccess(id disk.PageID)
-	OnEvict() (disk.PageID, error)
-	Pin(id disk.PageID)
+type PageStore interface {
+	ReadPage(id disk.PageID) (*disk.Page, error)
+	WritePage(id disk.PageID, page *disk.Page) error
 }
 
-type Buffer struct {
+type CoreBuffer struct {
 	capacity int
 	pages    map[disk.PageID]*disk.Page
-	disk     *disk.Adapter
-	strategy PageEvictor
+	store    PageStore
+	policy   EvictionPolicy
 }
 
-func NewBuffer(capacity int, adapter *disk.Adapter, strategy PageEvictor) *Buffer {
-	return &Buffer{
+func NewCoreBuffer(capacity int, store PageStore, policy EvictionPolicy) *CoreBuffer {
+	return &CoreBuffer{
 		capacity: capacity,
 		pages:    make(map[disk.PageID]*disk.Page),
-		disk:     adapter,
-		strategy: strategy,
+		store:    store,
+		policy:   policy,
 	}
 }
 
-func (b *Buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
+func NewBuffer(capacity int, store PageStore, policy EvictionPolicy) *CoreBuffer {
+	return NewCoreBuffer(capacity, store, policy)
+}
+
+func (b *CoreBuffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 	if page, ok := b.pages[id]; ok {
-		b.strategy.OnAccess(id)
+		if b.policy != nil {
+			b.policy.Touch(id)
+		}
 		return page, nil
 	}
 
-	newPage, err := b.disk.ReadPage(id)
+	newPage, err := b.store.ReadPage(id)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(b.pages) >= b.capacity {
-		victimID, err := b.strategy.OnEvict()
-		if err != nil {
-			return nil, fmt.Errorf("eviction failed: %w", err)
-		}
-		delete(b.pages, victimID)
+	if err := b.ensureCapacity(); err != nil {
+		return nil, err
 	}
 
 	b.pages[id] = newPage
-	b.strategy.OnAccess(id)
+	if b.policy != nil {
+		b.policy.Add(id)
+	}
 
 	return newPage, nil
 }
 
-func (b *Buffer) WritePage(id disk.PageID, newData []byte) error {
+func (b *CoreBuffer) WritePage(id disk.PageID, newData []byte) error {
 	page, err := b.ReadPage(id)
 	if err != nil {
 		return err
 	}
 
-	return page.Write(newData)
+	return page.Reset(newData)
 }
 
-func (b *Buffer) Flush(id disk.PageID) error {
-	if page, ok := b.pages[id]; ok {
-		if !page.IsDirty() {
-			return nil
-		}
-
-		return b.disk.WritePage(id, page)
+func (b *CoreBuffer) Flush(id disk.PageID) error {
+	page, ok := b.pages[id]
+	if !ok {
+		return errors.New("page not in buffer")
+	}
+	if !page.IsDirty() {
+		return nil
 	}
 
-	return errors.New("page not in buffer")
+	return b.store.WritePage(id, page)
 }
 
-func (b *Buffer) FlushAll() error {
-	for page := range b.pages {
-		if err := b.Flush(page); err != nil {
+func (b *CoreBuffer) FlushAll() error {
+	for id := range b.pages {
+		if err := b.Flush(id); err != nil {
 			return err
 		}
 	}
 
+	return nil
+}
+
+func (b *CoreBuffer) Pin(id disk.PageID) error {
+	if _, ok := b.pages[id]; !ok {
+		return errors.New("page not in buffer")
+	}
+	if b.policy != nil {
+		b.policy.Pin(id)
+	}
+
+	return nil
+}
+
+func (b *CoreBuffer) Unpin(id disk.PageID) error {
+	if _, ok := b.pages[id]; !ok {
+		return errors.New("page not in buffer")
+	}
+	if b.policy != nil {
+		b.policy.Unpin(id)
+	}
+
+	return nil
+}
+
+func (b *CoreBuffer) Contains(id disk.PageID) bool {
+	_, ok := b.pages[id]
+	return ok
+}
+
+func (b *CoreBuffer) ensureCapacity() error {
+	if b.capacity <= 0 {
+		return errors.New("buffer capacity must be positive")
+	}
+	if len(b.pages) < b.capacity {
+		return nil
+	}
+	if b.policy == nil {
+		return errors.New("eviction policy is required when buffer is full")
+	}
+
+	victimID, err := b.policy.Victim()
+	if err != nil {
+		return fmt.Errorf("eviction failed: %w", err)
+	}
+	if err := b.Flush(victimID); err != nil {
+		return fmt.Errorf("flush victim %q:%d: %w", victimID.FileName(), victimID.PageNum(), err)
+	}
+
+	delete(b.pages, victimID)
+	b.policy.Remove(victimID)
 	return nil
 }
