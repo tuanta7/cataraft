@@ -2,7 +2,7 @@
 
 This package implements writer with recovery strategies following Part 2, "Recovery" of Chapter 5 of the book "Database Internals".
 
-## 1. Crash Recovery
+## 1. Write Techniques
 
 Changes to disk are not instantaneous, and hardware can fail at any moment. A crash mid-write leaves storage in a partial state, neither the old version nor the new one is intact. Two properties are required of any reliable storage system:
 
@@ -36,8 +36,17 @@ Replacing data atomically by renaming files is only readers-writer atomic, it is
 
 Copy-on-write atomically switches everything to the new version.
 
-### 1.3. Double-write (with WAL)
+> [!NOTE]
+> Copy-on-Write already provides crash safety at the page level, so WAL is not required for correctness. If WAL is still present, it is usually introduced for operational or performance reasons (faster recovery, change-data-capture, etc.).
 
-## 2. Write-Ahead Log & Checksum
+### 1.3. Double-write Buffer
+
+Reference: [Innodb Double Write](https://www.percona.com/blog/innodb-double-write/)
+
+This technique is used by database engines like MySQL InnoDB to solve the torn page problem during crash or power loss.
+
+## 2. Write-Ahead Log
 
 Write-Ahead Log (WAL) or Append-Only Log is an append-only auxiliary disk-resident structure used for crash and transaction recovery.
+
+### Checksum
