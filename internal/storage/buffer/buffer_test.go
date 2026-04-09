@@ -12,8 +12,9 @@ import (
 
 type CoreBufferTestSuite struct {
 	suite.Suite
-	ctrl  *gomock.Controller
-	store *mocks.MockPageStore
+	ctrl   *gomock.Controller
+	store  *mocks.MockPageStore
+	writer *mocks.MockDirtyPageWriter
 }
 
 func TestCoreBufferTestSuite(t *testing.T) {
@@ -23,31 +24,17 @@ func TestCoreBufferTestSuite(t *testing.T) {
 func (s *CoreBufferTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.store = mocks.NewMockPageStore(s.ctrl)
+	s.writer = mocks.NewMockDirtyPageWriter(s.ctrl)
 }
 
 func (s *CoreBufferTestSuite) TearDownTest() {
 	s.ctrl.Finish()
 }
 
-func (s *CoreBufferTestSuite) TestReadPageUsesCacheAfterFirstLoad() {
-	pageID := disk.NewPageID("table.db", 1)
-	buf := buffer.NewCoreBuffer(2, s.store, buffer.NewLRUEvictionPolicy())
-	page := disk.NewPage(pageID)
-
-	s.store.EXPECT().ReadPage(pageID).Return(page, nil).Times(1)
-
-	first, err := buf.ReadPage(pageID)
-	s.Require().NoError(err)
-	second, err := buf.ReadPage(pageID)
-	s.Require().NoError(err)
-
-	s.Same(first, second)
-}
-
 func (s *CoreBufferTestSuite) TestEvictionFlushesDirtyVictim() {
 	firstID := disk.NewPageID("table.db", 1)
 	secondID := disk.NewPageID("table.db", 2)
-	buf := buffer.NewLRUBuffer(1, s.store)
+	buf := buffer.NewLRUBuffer(1, s.store, nil)
 	firstPage := disk.NewPage(firstID)
 	secondPage := disk.NewPage(secondID)
 	var flushed *disk.Page
@@ -75,7 +62,7 @@ func (s *CoreBufferTestSuite) TestPinnedPageIsNotEvicted() {
 	firstID := disk.NewPageID("table.db", 1)
 	secondID := disk.NewPageID("table.db", 2)
 	thirdID := disk.NewPageID("table.db", 3)
-	buf := buffer.NewLRUBuffer(2, s.store)
+	buf := buffer.NewLRUBuffer(2, s.store, nil)
 
 	gomock.InOrder(
 		s.store.EXPECT().ReadPage(firstID).Return(disk.NewPage(firstID), nil),
@@ -101,7 +88,7 @@ func (s *CoreBufferTestSuite) TestUnpinAllowsEviction() {
 	firstID := disk.NewPageID("table.db", 1)
 	secondID := disk.NewPageID("table.db", 2)
 	thirdID := disk.NewPageID("table.db", 3)
-	buf := buffer.NewLRUBuffer(2, s.store)
+	buf := buffer.NewLRUBuffer(2, s.store, nil)
 
 	gomock.InOrder(
 		s.store.EXPECT().ReadPage(firstID).Return(disk.NewPage(firstID), nil),

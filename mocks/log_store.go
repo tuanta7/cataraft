@@ -6,11 +6,11 @@ package mocks
 import (
 	reflect "reflect"
 
-	gomock "go.uber.org/mock/gomock"
 	recovery "github.com/tuanta7/cataraft/internal/storage/recovery"
+	gomock "go.uber.org/mock/gomock"
 )
 
-// MockLogStore is a mock of LogStore interface.
+// MockLogStore is a mock of DiskAdapter interface.
 type MockLogStore struct {
 	ctrl     *gomock.Controller
 	recorder *MockLogStoreMockRecorder
@@ -93,4 +93,4 @@ func (mr *MockLogStoreMockRecorder) SyncFile(fn any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncFile", reflect.TypeOf((*MockLogStore)(nil).SyncFile), fn)
 }
 
-var _ recovery.LogStore = (*MockLogStore)(nil)
+var _ recovery.DiskAdapter = (*MockLogStore)(nil)

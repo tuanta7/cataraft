@@ -34,6 +34,15 @@ func (s *PageTestSuite) TestWriteAt() {
 	s.True(page.IsDirty())
 }
 
+func (s *PageTestSuite) TestMarkClean() {
+	page := NewPage(NewPageID("main.db", 0))
+	s.Require().NoError(page.Write([]byte("cataraft")))
+
+	page.MarkClean()
+
+	s.False(page.IsDirty())
+}
+
 func (s *PageTestSuite) TestPageIDValidate() {
 	s.NoError(NewPageID("main.db", 0).Validate())
 	s.Error(NewPageID("", 0).Validate())

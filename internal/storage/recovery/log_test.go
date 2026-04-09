@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	"github.com/tuanta7/cataraft/internal/config"
 	"github.com/tuanta7/cataraft/internal/storage/disk"
 	recovery "github.com/tuanta7/cataraft/internal/storage/recovery"
 	"github.com/tuanta7/cataraft/mocks"
@@ -171,31 +172,31 @@ func encodeRecordForTest(record recovery.LogRecord) ([]byte, error) {
 	bodyLen := checksumFieldSize + recordTypeSize + lsnFieldSize + fileNameLenSize + len(fileName) + pageNumFieldSize + offsetFieldSize + payloadLenSize + len(record.Payload)
 	buf := bytes.NewBuffer(make([]byte, 0, lengthFieldSize+bodyLen))
 
-	if err := binary.Write(buf, binary.BigEndian, uint32(bodyLen)); err != nil {
+	if err := binary.Write(buf, config.ByteOrder, uint32(bodyLen)); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, uint32(0)); err != nil {
+	if err := binary.Write(buf, config.ByteOrder, uint32(0)); err != nil {
 		return nil, err
 	}
 	if err := buf.WriteByte(recordTypePageWrite); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, record.LSN); err != nil {
+	if err := binary.Write(buf, config.ByteOrder, record.LSN); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, uint16(len(fileName))); err != nil {
+	if err := binary.Write(buf, config.ByteOrder, uint16(len(fileName))); err != nil {
 		return nil, err
 	}
 	if _, err := buf.WriteString(fileName); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, uint64(record.PageID.PageNum())); err != nil {
+	if err := binary.Write(buf, config.ByteOrder, uint64(record.PageID.PageNum())); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, record.Offset); err != nil {
+	if err := binary.Write(buf, config.ByteOrder, record.Offset); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, uint32(len(record.Payload))); err != nil {
+	if err := binary.Write(buf, config.ByteOrder, uint32(len(record.Payload))); err != nil {
 		return nil, err
 	}
 	if _, err := buf.Write(record.Payload); err != nil {
@@ -203,6 +204,6 @@ func encodeRecordForTest(record recovery.LogRecord) ([]byte, error) {
 	}
 
 	encoded := buf.Bytes()
-	binary.BigEndian.PutUint32(encoded[lengthFieldSize:lengthFieldSize+checksumFieldSize], crc32.ChecksumIEEE(encoded[lengthFieldSize+checksumFieldSize:]))
+	config.ByteOrder.PutUint32(encoded[lengthFieldSize:lengthFieldSize+checksumFieldSize], crc32.ChecksumIEEE(encoded[lengthFieldSize+checksumFieldSize:]))
 	return encoded, nil
 }

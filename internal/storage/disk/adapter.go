@@ -32,8 +32,7 @@ func NewAdapter(config AdapterConfig) (*Adapter, error) {
 
 	info, err := os.Stat(baseDir)
 	if os.IsNotExist(err) {
-		err = os.MkdirAll(baseDir, 0755)
-		if err != nil {
+		if err = os.MkdirAll(baseDir, 0755); err != nil {
 			return nil, err
 		}
 	} else if err != nil {

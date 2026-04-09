@@ -12,27 +12,20 @@ type PageStore interface {
 	WritePage(id disk.PageID, page *disk.Page) error
 }
 
-type CoreBuffer struct {
+type DirtyPageWriter interface {
+	StagePage(id disk.PageID, page *disk.Page) error
+	FlushPage(id disk.PageID) error
+}
+
+type buffer struct {
 	capacity int
 	pages    map[disk.PageID]*disk.Page
 	store    PageStore
 	policy   EvictionPolicy
+	writer   DirtyPageWriter
 }
 
-func NewCoreBuffer(capacity int, store PageStore, policy EvictionPolicy) *CoreBuffer {
-	return &CoreBuffer{
-		capacity: capacity,
-		pages:    make(map[disk.PageID]*disk.Page),
-		store:    store,
-		policy:   policy,
-	}
-}
-
-func NewBuffer(capacity int, store PageStore, policy EvictionPolicy) *CoreBuffer {
-	return NewCoreBuffer(capacity, store, policy)
-}
-
-func (b *CoreBuffer) ReadPage(id disk.PageID) (*disk.Page, error) {
+func (b *buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 	if page, ok := b.pages[id]; ok {
 		if b.policy != nil {
 			b.policy.Touch(id)
@@ -57,7 +50,7 @@ func (b *CoreBuffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 	return newPage, nil
 }
 
-func (b *CoreBuffer) WritePage(id disk.PageID, newData []byte) error {
+func (b *buffer) WritePage(id disk.PageID, newData []byte) error {
 	page, err := b.ReadPage(id)
 	if err != nil {
 		return err
@@ -66,7 +59,7 @@ func (b *CoreBuffer) WritePage(id disk.PageID, newData []byte) error {
 	return page.Reset(newData)
 }
 
-func (b *CoreBuffer) Flush(id disk.PageID) error {
+func (b *buffer) Flush(id disk.PageID) error {
 	page, ok := b.pages[id]
 	if !ok {
 		return errors.New("page not in buffer")
@@ -75,10 +68,17 @@ func (b *CoreBuffer) Flush(id disk.PageID) error {
 		return nil
 	}
 
+	if b.writer != nil {
+		if err := b.writer.StagePage(id, page); err != nil {
+			return err
+		}
+		return b.writer.FlushPage(id)
+	}
+
 	return b.store.WritePage(id, page)
 }
 
-func (b *CoreBuffer) FlushAll() error {
+func (b *buffer) FlushAll() error {
 	for id := range b.pages {
 		if err := b.Flush(id); err != nil {
 			return err
@@ -88,7 +88,7 @@ func (b *CoreBuffer) FlushAll() error {
 	return nil
 }
 
-func (b *CoreBuffer) Pin(id disk.PageID) error {
+func (b *buffer) Pin(id disk.PageID) error {
 	if _, ok := b.pages[id]; !ok {
 		return errors.New("page not in buffer")
 	}
@@ -99,7 +99,7 @@ func (b *CoreBuffer) Pin(id disk.PageID) error {
 	return nil
 }
 
-func (b *CoreBuffer) Unpin(id disk.PageID) error {
+func (b *buffer) Unpin(id disk.PageID) error {
 	if _, ok := b.pages[id]; !ok {
 		return errors.New("page not in buffer")
 	}
@@ -110,12 +110,12 @@ func (b *CoreBuffer) Unpin(id disk.PageID) error {
 	return nil
 }
 
-func (b *CoreBuffer) Contains(id disk.PageID) bool {
+func (b *buffer) Contains(id disk.PageID) bool {
 	_, ok := b.pages[id]
 	return ok
 }
 
-func (b *CoreBuffer) ensureCapacity() error {
+func (b *buffer) ensureCapacity() error {
 	if b.capacity <= 0 {
 		return errors.New("buffer capacity must be positive")
 	}

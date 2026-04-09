@@ -8,12 +8,18 @@ import (
 )
 
 type LRUBuffer struct {
-	*CoreBuffer
+	*buffer
 }
 
-func NewLRUBuffer(capacity int, store PageStore) *LRUBuffer {
+func NewLRUBuffer(capacity int, store PageStore, writer DirtyPageWriter) *LRUBuffer {
 	return &LRUBuffer{
-		CoreBuffer: NewCoreBuffer(capacity, store, NewLRUEvictionPolicy()),
+		buffer: &buffer{
+			capacity: capacity,
+			pages:    make(map[disk.PageID]*disk.Page),
+			store:    store,
+			policy:   NewLRUEvictionPolicy(),
+			writer:   writer,
+		},
 	}
 }
 

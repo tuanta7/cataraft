@@ -25,20 +25,20 @@ flowchart TD
     buffer[Buffer Pool Layer<br/>CoreBuffer + LRU eviction policy]
     flush[Dirty Page Flush]
     reads[Page Cache Reads]
-    wal[Recovery / WAL<br/>append log + fsync]
+    logger[Recovery / WAL<br/>append log + fsync]
     dw[Double-Write Buffer<br/>temporary safe page copy]
     disk[Disk Adapter<br/>page/file primitives]
-    machine[Machine Disk<br/>data files + wal log]
+    machine[Machine Disk<br/>data files + logger log]
 
     client --> query
     query --> bptree
     bptree --> buffer
     buffer --> flush
     buffer --> reads
-    flush --> wal
+    flush --> logger
     flush --> dw
     reads --> disk
-    wal --> disk
+    logger --> disk
     dw --> disk
     disk --> machine
 ```
