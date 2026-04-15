@@ -8,27 +8,20 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 )
 
 type Adapter struct {
 	mu          sync.RWMutex
 	baseDir     string
-	direct      bool
 	openedFiles map[string]*os.File
 }
 
-type AdapterConfig struct {
-	BaseDir string
-	Direct  bool
-}
-
-func NewAdapter(config AdapterConfig) (*Adapter, error) {
-	if config.BaseDir == "" {
+func NewAdapter(dataDir string) (*Adapter, error) {
+	if dataDir == "" {
 		return nil, errors.New("base directory is required")
 	}
 
-	baseDir := filepath.Clean(config.BaseDir)
+	baseDir := filepath.Clean(dataDir)
 
 	info, err := os.Stat(baseDir)
 	if os.IsNotExist(err) {
@@ -43,7 +36,6 @@ func NewAdapter(config AdapterConfig) (*Adapter, error) {
 
 	return &Adapter{
 		baseDir:     baseDir,
-		direct:      config.Direct,
 		openedFiles: make(map[string]*os.File),
 	}, nil
 }
@@ -84,9 +76,6 @@ func (m *Adapter) openFile(fn string) (*os.File, error) {
 	}
 
 	flags := os.O_RDWR | os.O_CREATE
-	if m.direct {
-		flags = flags | syscall.O_DIRECT
-	}
 
 	f, err := os.OpenFile(path, flags, 0644)
 	if err != nil {
@@ -222,17 +211,16 @@ func (m *Adapter) ReadPage(id PageID) (*Page, error) {
 	}
 
 	n, err := file.ReadAt(page.data, id.offset())
-	switch {
-	case err == nil:
-		return page, nil
-	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		for i := n; i < len(page.data); i++ {
 			page.data[i] = 0
 		}
 		return page, nil
-	default:
+	} else if err != nil {
 		return nil, err
 	}
+
+	return page, nil
 }
 
 func (m *Adapter) WritePage(id PageID, page *Page) error {

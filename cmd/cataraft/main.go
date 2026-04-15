@@ -32,10 +32,7 @@ func main() {
 
 			log.Info().Str("CATARAFT_DATA_DIR", cfg.DataDir).Msg("")
 
-			diskAdapter, err := disk.NewAdapter(disk.AdapterConfig{
-				BaseDir: cfg.DataDir,
-				Direct:  false,
-			})
+			diskAdapter, err := disk.NewAdapter(cfg.DataDir)
 			if err != nil {
 				return err
 			}

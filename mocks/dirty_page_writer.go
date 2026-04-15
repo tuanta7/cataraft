@@ -55,4 +55,4 @@ func (mr *MockDirtyPageWriterMockRecorder) FlushPage(id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FlushPage", reflect.TypeOf((*MockDirtyPageWriter)(nil).FlushPage), id)
 }
 
-var _ buffer.DirtyPageWriter = (*MockDirtyPageWriter)(nil)
+var _ buffer.SafeWriter = (*MockDirtyPageWriter)(nil)

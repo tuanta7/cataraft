@@ -17,10 +17,7 @@ func TestAdapterTestSuite(t *testing.T) {
 }
 
 func (s *AdapterTestSuite) SetupTest() {
-	adapter, err := NewAdapter(AdapterConfig{
-		BaseDir: s.T().TempDir(),
-		Direct:  false,
-	})
+	adapter, err := NewAdapter(s.T().TempDir())
 	s.Require().NoError(err)
 	s.adapter = adapter
 }

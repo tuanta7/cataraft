@@ -1,4 +1,4 @@
-package cow_test
+package cow
 
 import (
 	"bytes"
@@ -9,17 +9,16 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/tuanta7/cataraft/internal/config"
 	"github.com/tuanta7/cataraft/internal/storage/disk"
-	recovery "github.com/tuanta7/cataraft/internal/storage/recovery"
-	"github.com/tuanta7/cataraft/internal/storage/writer/cow"
+	"github.com/tuanta7/cataraft/internal/storage/recovery"
 	"github.com/tuanta7/cataraft/internal/storage/writer/dwb"
-	"github.com/tuanta7/cataraft/mocks"
-	gomock "go.uber.org/mock/gomock"
+	mockcow "github.com/tuanta7/cataraft/mocks/cow"
+	"go.uber.org/mock/gomock"
 )
 
 type CopyOnWriteBufferTestSuite struct {
 	suite.Suite
 	ctrl  *gomock.Controller
-	store *mocks.MockCopyOnWriteStore
+	store *mockcow.MockStore
 }
 
 func TestCopyOnWriteBufferTestSuite(t *testing.T) {
@@ -28,7 +27,7 @@ func TestCopyOnWriteBufferTestSuite(t *testing.T) {
 
 func (s *CopyOnWriteBufferTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.store = mocks.NewMockCopyOnWriteStore(s.ctrl)
+	s.store = mockcow.NewMockStore(s.ctrl)
 }
 
 func (s *CopyOnWriteBufferTestSuite) TearDownTest() {
@@ -42,7 +41,7 @@ func (s *CopyOnWriteBufferTestSuite) TestStagePageKeepsLocalCopy() {
 	page := disk.NewPage(id)
 	s.Require().NoError(page.Write([]byte("stage")))
 
-	s.Require().NoError(buf.StagePage(id, page))
+	s.Require().NoError(buf.stagePage(id, page))
 	s.True(buf.HasPage(id))
 }
 
@@ -51,7 +50,6 @@ func (s *CopyOnWriteBufferTestSuite) TestFlushPageWritesShadowThenAppendsManifes
 
 	id := disk.NewPageID("table/main.db", 2)
 	page := disk.NewPage(id)
-	page.SetLSN(9)
 	s.Require().NoError(page.Write([]byte("flush")))
 	s.Require().NoError(buf.StagePage(id, page))
 
@@ -78,15 +76,14 @@ func (s *CopyOnWriteBufferTestSuite) TestFlushPageWritesShadowThenAppendsManifes
 	record := decodeCopyOnWriteRecordForTest(manifestRecord)
 	s.Equal(id, record.pageID)
 	s.Equal(int64(0), record.shadowPageNum)
-	s.Equal(uint64(9), record.lsn)
 }
 
 func (s *CopyOnWriteBufferTestSuite) TestReadPageUsesLatestRecoveredShadowPage() {
 	buf := s.newBuffer(nil)
 
 	id := disk.NewPageID("table/main.db", 7)
-	recordOld := encodeCopyOnWriteRecordForTest(id, 1, 2, 3, []byte("old"))
-	recordNew := encodeCopyOnWriteRecordForTest(id, 2, 5, 8, []byte("newer"))
+	recordOld := encodeCopyOnWriteRecordForTest(id, 1, 2, []byte("old"))
+	recordNew := encodeCopyOnWriteRecordForTest(id, 2, 5, []byte("newer"))
 	manifest := append(recordOld, recordNew...)
 
 	s.expectManifestReads(manifest)
@@ -106,7 +103,6 @@ func (s *CopyOnWriteBufferTestSuite) TestReadPageUsesLatestRecoveredShadowPage()
 	page, err := buf.ReadPage(id)
 	s.Require().NoError(err)
 	s.Equal(id, page.ID())
-	s.Equal(uint64(8), page.LSN())
 	s.False(page.IsDirty())
 	s.Equal([]byte("newer"), page.Data()[:5])
 }
@@ -115,8 +111,8 @@ func (s *CopyOnWriteBufferTestSuite) TestRecoverAllIgnoresTruncatedManifestTail(
 	buf := s.newBuffer(nil)
 
 	id := disk.NewPageID("table/main.db", 9)
-	record := encodeCopyOnWriteRecordForTest(id, 1, 4, 6, []byte("stable"))
-	truncatedTail := encodeCopyOnWriteRecordForTest(disk.NewPageID("table/main.db", 10), 2, 7, 8, []byte("tail"))[:9]
+	record := encodeCopyOnWriteRecordForTest(id, 1, 4, []byte("stable"))
+	truncatedTail := encodeCopyOnWriteRecordForTest(disk.NewPageID("table/main.db", 10), 2, 7, []byte("tail"))[:9]
 	manifest := append(record, truncatedTail...)
 
 	s.expectManifestReads(manifest)
@@ -127,10 +123,10 @@ func (s *CopyOnWriteBufferTestSuite) TestRecoverAllIgnoresTruncatedManifestTail(
 	s.Equal(disk.NewPageID("copyonwrite.pages", 4), shadowID)
 }
 
-func (s *CopyOnWriteBufferTestSuite) newBuffer(wal dwb.WALFlusher) *cow.CopyOnWriteBuffer {
+func (s *CopyOnWriteBufferTestSuite) newBuffer(wal dwb.WALFlusher) *cow.Buffer {
 	s.store.EXPECT().FileSize("copyonwrite.manifest").Return(int64(0), nil)
 
-	buf, err := cow.NewCopyOnWriteBuffer(s.store, "copyonwrite.pages", "copyonwrite.manifest")
+	buf, err := cow.NewBuffer(s.store, "copyonwrite.pages", "copyonwrite.manifest")
 	s.Require().NoError(err)
 	return buf
 }
@@ -158,23 +154,21 @@ type copyOnWriteRecordForTest struct {
 	pageID        disk.PageID
 	sequence      uint64
 	shadowPageNum int64
-	lsn           uint64
 	checksum      uint32
 }
 
-func encodeCopyOnWriteRecordForTest(id disk.PageID, sequence uint64, shadowPageNum int64, lsn uint64, payload []byte) []byte {
+func encodeCopyOnWriteRecordForTest(id disk.PageID, sequence uint64, shadowPageNum int64, payload []byte) []byte {
 	const (
 		recordTypePageVersion = 1
 		lengthFieldSize       = 4
 		checksumFieldSize     = 4
 		recordTypeSize        = 1
 		sequenceSize          = 8
-		lsnSize               = 8
 		shadowPageNumSize     = 8
 		pageChecksumSize      = 4
 		fileNameLenSize       = 2
 		logicalPageNumSize    = 8
-		recordPrefixSize      = checksumFieldSize + recordTypeSize + sequenceSize + lsnSize + shadowPageNumSize + pageChecksumSize + fileNameLenSize + logicalPageNumSize
+		recordPrefixSize      = checksumFieldSize + recordTypeSize + sequenceSize + shadowPageNumSize + pageChecksumSize + fileNameLenSize + logicalPageNumSize
 		headerSize            = lengthFieldSize + checksumFieldSize
 	)
 
@@ -187,7 +181,6 @@ func encodeCopyOnWriteRecordForTest(id disk.PageID, sequence uint64, shadowPageN
 	_ = binary.Write(buf, config.ByteOrder, uint32(0))
 	_ = buf.WriteByte(recordTypePageVersion)
 	_ = binary.Write(buf, config.ByteOrder, sequence)
-	_ = binary.Write(buf, config.ByteOrder, lsn)
 	_ = binary.Write(buf, config.ByteOrder, uint64(shadowPageNum))
 	_ = binary.Write(buf, config.ByteOrder, recovery.Checksum(page.Data()))
 	_ = binary.Write(buf, config.ByteOrder, uint16(len(fileName)))
@@ -211,7 +204,6 @@ func decodeCopyOnWriteRecordForTest(encoded []byte) copyOnWriteRecordForTest {
 
 	record := copyOnWriteRecordForTest{}
 	_ = binary.Read(reader, config.ByteOrder, &record.sequence)
-	_ = binary.Read(reader, config.ByteOrder, &record.lsn)
 	var shadowPageNum uint64
 	_ = binary.Read(reader, config.ByteOrder, &shadowPageNum)
 	record.shadowPageNum = int64(shadowPageNum)

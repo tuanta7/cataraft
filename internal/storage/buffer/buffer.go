@@ -7,22 +7,16 @@ import (
 	"github.com/tuanta7/cataraft/internal/storage/disk"
 )
 
-type PageStore interface {
-	ReadPage(id disk.PageID) (*disk.Page, error)
+type Writer interface {
 	WritePage(id disk.PageID, page *disk.Page) error
 }
 
-type DirtyPageWriter interface {
-	StagePage(id disk.PageID, page *disk.Page) error
-	FlushPage(id disk.PageID) error
-}
-
 type buffer struct {
-	capacity int
+	capacity int // max length of pages
 	pages    map[disk.PageID]*disk.Page
-	store    PageStore
+	disk     *disk.Adapter
+	writer   Writer
 	policy   EvictionPolicy
-	writer   DirtyPageWriter
 }
 
 func (b *buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
@@ -33,7 +27,7 @@ func (b *buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 		return page, nil
 	}
 
-	newPage, err := b.store.ReadPage(id)
+	newPage, err := b.disk.ReadPage(id)
 	if err != nil {
 		return nil, err
 	}
@@ -64,18 +58,16 @@ func (b *buffer) Flush(id disk.PageID) error {
 	if !ok {
 		return errors.New("page not in buffer")
 	}
+
 	if !page.IsDirty() {
 		return nil
 	}
 
 	if b.writer != nil {
-		if err := b.writer.StagePage(id, page); err != nil {
-			return err
-		}
-		return b.writer.FlushPage(id)
+		return b.writer.WritePage(id, page)
 	}
 
-	return b.store.WritePage(id, page)
+	return b.disk.WritePage(id, page)
 }
 
 func (b *buffer) FlushAll() error {
@@ -119,9 +111,11 @@ func (b *buffer) ensureCapacity() error {
 	if b.capacity <= 0 {
 		return errors.New("buffer capacity must be positive")
 	}
+
 	if len(b.pages) < b.capacity {
 		return nil
 	}
+
 	if b.policy == nil {
 		return errors.New("eviction policy is required when buffer is full")
 	}
@@ -130,6 +124,7 @@ func (b *buffer) ensureCapacity() error {
 	if err != nil {
 		return fmt.Errorf("eviction failed: %w", err)
 	}
+
 	if err := b.Flush(victimID); err != nil {
 		return fmt.Errorf("flush victim %q:%d: %w", victimID.FileName(), victimID.PageNum(), err)
 	}

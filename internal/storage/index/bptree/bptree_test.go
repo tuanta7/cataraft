@@ -24,10 +24,8 @@ func TestBPlusTreeTestSuite(t *testing.T) {
 func (s *BPlusTreeTestSuite) SetupTest() {
 	s.baseDir = s.T().TempDir()
 	var err error
-	s.adapter, err = disk.NewAdapter(disk.AdapterConfig{
-		BaseDir: s.baseDir,
-		Direct:  false,
-	})
+
+	s.adapter, err = disk.NewAdapter(s.baseDir)
 	s.Require().NoError(err)
 	s.buf = buffer.NewLRUBuffer(128, s.adapter, nil)
 
@@ -122,10 +120,7 @@ func (s *BPlusTreeTestSuite) TestReloadFromDiskViaBuffer() {
 	s.Require().NoError(s.tree.Delete([]byte("03")))
 	s.Require().NoError(s.adapter.Close())
 
-	reopenAdapter, err := disk.NewAdapter(disk.AdapterConfig{
-		BaseDir: s.baseDir,
-		Direct:  false,
-	})
+	reopenAdapter, err := disk.NewAdapter(s.baseDir)
 	s.Require().NoError(err)
 	s.adapter = reopenAdapter
 	s.buf = buffer.NewLRUBuffer(128, s.adapter, nil)
