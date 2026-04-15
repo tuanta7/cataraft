@@ -40,50 +40,82 @@ func NewAdapter(dataDir string) (*Adapter, error) {
 	}, nil
 }
 
-func (m *Adapter) filePath(fn string) (string, error) {
-	if fn == "" {
-		return "", errors.New("file name is required")
+// ReadPage reads a page of data from the file associated with the given PageID into the provided page.
+func (m *Adapter) ReadPage(id PageID) (*Page, error) {
+	if err := id.Validate(); err != nil {
+		return nil, err
 	}
 
-	cleanName := filepath.Clean(fn)
-	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid file name %q", fn)
-	}
-	if filepath.IsAbs(cleanName) {
-		return "", fmt.Errorf("absolute file name %q is not allowed", fn)
+	page := NewPage(id)
+	file, err := m.openFile(id.fileName)
+	if err != nil {
+		return nil, err
 	}
 
-	path := filepath.Join(m.baseDir, cleanName)
-	parent := filepath.Dir(path)
-	if err := os.MkdirAll(parent, 0755); err != nil {
-		return "", err
+	n, err := file.ReadAt(page.data, id.offset())
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		for i := n; i < len(page.data); i++ {
+			page.data[i] = 0
+		}
+		return page, nil
+	} else if err != nil {
+		return nil, err
 	}
 
-	return path, nil
+	return page, nil
 }
 
-func (m *Adapter) openFile(fn string) (*os.File, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if f, ok := m.openedFiles[fn]; ok {
-		return f, nil
+func (m *Adapter) WritePage(id PageID, page *Page) error {
+	if page == nil {
+		return errors.New("page cannot be nil")
+	}
+	if err := id.Validate(); err != nil {
+		return err
 	}
 
-	path, err := m.filePath(fn)
+	file, err := m.openFile(id.fileName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	flags := os.O_RDWR | os.O_CREATE
-
-	f, err := os.OpenFile(path, flags, 0644)
+	page.id = id
+	n, err := file.WriteAt(page.data, id.offset())
 	if err != nil {
-		return nil, err
+		return err
+	}
+	if n != len(page.data) {
+		return io.ErrShortWrite
 	}
 
-	m.openedFiles[fn] = f
-	return f, nil
+	page.isDirty = false
+	return nil
+}
+
+func (m *Adapter) SyncFile(fn string) error {
+	file, err := m.openFile(fn)
+	if err != nil {
+		return err
+	}
+
+	return file.Sync()
+}
+
+func (m *Adapter) Sync() error {
+	m.mu.RLock()
+	files := make([]*os.File, 0, len(m.openedFiles))
+	for _, f := range m.openedFiles {
+		files = append(files, f)
+	}
+	m.mu.RUnlock()
+
+	var errs error
+	for _, file := range files {
+		if err := file.Sync(); err != nil {
+			errs = errors.Join(errs, err)
+		}
+	}
+
+	return errs
 }
 
 func (m *Adapter) CloseFile(fn string) error {
@@ -103,13 +135,23 @@ func (m *Adapter) CloseFile(fn string) error {
 	return nil
 }
 
-func (m *Adapter) SyncFile(fn string) error {
-	file, err := m.openFile(fn)
-	if err != nil {
-		return err
+func (m *Adapter) Close() error {
+	m.mu.Lock()
+	files := make([]*os.File, 0, len(m.openedFiles))
+	for k, f := range m.openedFiles {
+		files = append(files, f)
+		delete(m.openedFiles, k)
+	}
+	m.mu.Unlock()
+
+	var errs error
+	for _, file := range files {
+		if err := file.Close(); err != nil {
+			errs = errors.Join(errs, err)
+		}
 	}
 
-	return file.Sync()
+	return errs
 }
 
 func (m *Adapter) FileSize(fn string) (int64, error) {
@@ -161,90 +203,50 @@ func (m *Adapter) AppendFile(fn string, data []byte) (int64, error) {
 	return offset, nil
 }
 
-func (m *Adapter) Close() error {
+func (m *Adapter) openFile(fn string) (*os.File, error) {
 	m.mu.Lock()
-	files := make([]*os.File, 0, len(m.openedFiles))
-	for k, f := range m.openedFiles {
-		files = append(files, f)
-		delete(m.openedFiles, k)
-	}
-	m.mu.Unlock()
+	defer m.mu.Unlock()
 
-	var errs error
-	for _, file := range files {
-		if err := file.Close(); err != nil {
-			errs = errors.Join(errs, err)
-		}
+	if f, ok := m.openedFiles[fn]; ok {
+		return f, nil
 	}
 
-	return errs
-}
-
-func (m *Adapter) Sync() error {
-	m.mu.RLock()
-	files := make([]*os.File, 0, len(m.openedFiles))
-	for _, f := range m.openedFiles {
-		files = append(files, f)
-	}
-	m.mu.RUnlock()
-
-	var errs error
-	for _, file := range files {
-		if err := file.Sync(); err != nil {
-			errs = errors.Join(errs, err)
-		}
-	}
-
-	return errs
-}
-
-// ReadPage reads a page of data from the file associated with the given PageID into the provided page.
-func (m *Adapter) ReadPage(id PageID) (*Page, error) {
-	if err := id.Validate(); err != nil {
-		return nil, err
-	}
-
-	page := NewPage(id)
-	file, err := m.openFile(id.fileName)
+	path, err := m.filePath(fn)
 	if err != nil {
 		return nil, err
 	}
 
-	n, err := file.ReadAt(page.data, id.offset())
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		for i := n; i < len(page.data); i++ {
-			page.data[i] = 0
-		}
-		return page, nil
-	} else if err != nil {
+	flags := os.O_RDWR | os.O_CREATE
+
+	f, err := os.OpenFile(path, flags, 0644)
+	if err != nil {
 		return nil, err
 	}
 
-	return page, nil
+	m.openedFiles[fn] = f
+	return f, nil
 }
 
-func (m *Adapter) WritePage(id PageID, page *Page) error {
-	if page == nil {
-		return errors.New("page cannot be nil")
-	}
-	if err := id.Validate(); err != nil {
-		return err
+func (m *Adapter) filePath(fn string) (string, error) {
+	if fn == "" {
+		return "", errors.New("file name is required")
 	}
 
-	file, err := m.openFile(id.fileName)
-	if err != nil {
-		return err
+	cleanName := filepath.Clean(fn)
+	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid file name %q", fn)
 	}
 
-	page.id = id
-	n, err := file.WriteAt(page.data, id.offset())
-	if err != nil {
-		return err
-	}
-	if n != len(page.data) {
-		return io.ErrShortWrite
+	if filepath.IsAbs(cleanName) {
+		return "", fmt.Errorf("absolute file name %q is not allowed", fn)
 	}
 
-	page.isDirty = false
-	return nil
+	path := filepath.Join(m.baseDir, cleanName)
+
+	parent := filepath.Dir(path)
+	if err := os.MkdirAll(parent, 0755); err != nil {
+		return "", err
+	}
+
+	return path, nil
 }
