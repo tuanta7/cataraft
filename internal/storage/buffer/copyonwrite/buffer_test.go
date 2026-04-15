@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/tuanta7/cataraft/internal/config"
 	"github.com/tuanta7/cataraft/internal/storage/disk"
-	mockcow "github.com/tuanta7/cataraft/mocks/cow"
+	mock "github.com/tuanta7/cataraft/mocks"
 	"go.uber.org/mock/gomock"
 )
 
 type CopyOnWriteBufferTestSuite struct {
 	suite.Suite
 	ctrl  *gomock.Controller
-	store *mockcow.MockStore
+	store *mock.CopyOnWriteStore
 }
 
 func TestCopyOnWriteBufferTestSuite(t *testing.T) {
@@ -25,7 +25,7 @@ func TestCopyOnWriteBufferTestSuite(t *testing.T) {
 
 func (s *CopyOnWriteBufferTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.store = mockcow.NewMockStore(s.ctrl)
+	s.store = mock.NewCopyOnWriteStore(s.ctrl)
 }
 
 func (s *CopyOnWriteBufferTestSuite) TearDownTest() {
