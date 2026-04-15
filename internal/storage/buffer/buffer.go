@@ -7,15 +7,15 @@ import (
 	"github.com/tuanta7/cataraft/internal/storage/disk"
 )
 
-type Writer interface {
+type PageStore interface {
+	ReadPage(id disk.PageID) (*disk.Page, error)
 	WritePage(id disk.PageID, page *disk.Page) error
 }
 
 type buffer struct {
 	capacity int // max length of pages
 	pages    map[disk.PageID]*disk.Page
-	disk     *disk.Adapter
-	writer   Writer
+	store    PageStore
 	policy   EvictionPolicy
 }
 
@@ -27,7 +27,7 @@ func (b *buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 		return page, nil
 	}
 
-	newPage, err := b.disk.ReadPage(id)
+	newPage, err := b.store.ReadPage(id)
 	if err != nil {
 		return nil, err
 	}
@@ -63,11 +63,7 @@ func (b *buffer) Flush(id disk.PageID) error {
 		return nil
 	}
 
-	if b.writer != nil {
-		return b.writer.WritePage(id, page)
-	}
-
-	return b.disk.WritePage(id, page)
+	return b.store.WritePage(id, page)
 }
 
 func (b *buffer) FlushAll() error {

@@ -23,7 +23,7 @@ mock-install:
 	$(MOCKGEN) --version
 
 mock-gen:
-	$(MOCKGEN) -source=./internal/storage/writer/cow/copy_on_write.go -destination=./mocks/cow/copy_on_write.go -package=mockcow
+	$(MOCKGEN) -source=./internal/storage/writer/cow/buffer.go -destination=./mocks/cow/copy_on_write.go -package=mockcow
 
 endian-check:
 	lscpu | grep "Byte Order"

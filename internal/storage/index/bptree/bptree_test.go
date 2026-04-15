@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/tuanta7/cataraft/internal/storage/buffer"
+	"github.com/tuanta7/cataraft/internal/storage/buffer/copyonwrite"
 	"github.com/tuanta7/cataraft/internal/storage/disk"
 )
 
@@ -15,6 +16,7 @@ type BPlusTreeTestSuite struct {
 	baseDir string
 	adapter *disk.Adapter
 	buf     *buffer.LRUBuffer
+	cow     *copyonwrite.Buffer
 }
 
 func TestBPlusTreeTestSuite(t *testing.T) {
@@ -27,7 +29,9 @@ func (s *BPlusTreeTestSuite) SetupTest() {
 
 	s.adapter, err = disk.NewAdapter(s.baseDir)
 	s.Require().NoError(err)
-	s.buf = buffer.NewLRUBuffer(128, s.adapter, nil)
+	s.cow, err = copyonwrite.NewBuffer(s.adapter)
+	s.Require().NoError(err)
+	s.buf = buffer.NewLRUBuffer(128, s.cow)
 
 	tree, err := New(4, s.buf)
 	s.Require().NoError(err)
@@ -123,7 +127,9 @@ func (s *BPlusTreeTestSuite) TestReloadFromDiskViaBuffer() {
 	reopenAdapter, err := disk.NewAdapter(s.baseDir)
 	s.Require().NoError(err)
 	s.adapter = reopenAdapter
-	s.buf = buffer.NewLRUBuffer(128, s.adapter, nil)
+	s.cow, err = copyonwrite.NewBuffer(s.adapter)
+	s.Require().NoError(err)
+	s.buf = buffer.NewLRUBuffer(128, s.cow)
 
 	reloaded, err := New(4, s.buf)
 	s.Require().NoError(err)

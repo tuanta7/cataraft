@@ -11,13 +11,12 @@ type LRUBuffer struct {
 	*buffer
 }
 
-func NewLRUBuffer(capacity int, store *disk.Adapter, writer Writer) *LRUBuffer {
+func NewLRUBuffer(capacity int, store PageStore) *LRUBuffer {
 	return &LRUBuffer{
 		buffer: &buffer{
 			capacity: capacity,
 			pages:    make(map[disk.PageID]*disk.Page),
-			disk:     store,
-			writer:   writer,
+			store:    store,
 			policy: &lruEvictionPolicy{
 				order:   list.New(),
 				entries: make(map[disk.PageID]*list.Element),

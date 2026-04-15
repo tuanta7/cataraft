@@ -11,7 +11,6 @@ import (
 type Page struct {
 	id      PageID
 	isDirty bool
-	lsn     uint64 // log sequence number
 	data    []byte
 }
 
@@ -71,14 +70,6 @@ func (p *Page) MarkClean() {
 
 func (p *Page) ID() PageID {
 	return p.id
-}
-
-func (p *Page) LSN() uint64 {
-	return p.lsn
-}
-
-func (p *Page) SetLSN(lsn uint64) {
-	p.lsn = lsn
 }
 
 func (p *Page) Data() []byte {

@@ -1,4 +1,4 @@
-package cow
+package copyonwrite
 
 import (
 	"errors"
@@ -8,8 +8,6 @@ import (
 
 	"github.com/tuanta7/cataraft/internal/config"
 	"github.com/tuanta7/cataraft/internal/storage/disk"
-	"github.com/tuanta7/cataraft/internal/storage/recovery"
-	"github.com/tuanta7/cataraft/internal/storage/writer"
 )
 
 const (
@@ -88,7 +86,7 @@ func (b *Buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 
 	b.mu.Lock()
 	if page, ok := b.pages[id]; ok {
-		staged, err := writer.ClonePage(id, page)
+		staged, err := clonePage(id, page)
 		b.mu.Unlock()
 		if err != nil {
 			return nil, err
@@ -108,11 +106,11 @@ func (b *Buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 	if err != nil {
 		return nil, err
 	}
-	if recovery.Checksum(page.Data()) != entry.Checksum {
+	if checksum(page.Data()) != entry.Checksum {
 		return nil, fmt.Errorf("copy-on-write checksum mismatch for %q:%d", id.FileName(), id.PageNum())
 	}
 
-	current, err := writer.ClonePage(id, page)
+	current, err := clonePage(id, page)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +133,7 @@ func (b *Buffer) stagePage(id disk.PageID, page *disk.Page) error {
 	if err := id.Validate(); err != nil {
 		return err
 	}
-	staged, err := writer.ClonePage(id, page)
+	staged, err := clonePage(id, page)
 	if err != nil {
 		return err
 	}
@@ -165,7 +163,7 @@ func (b *Buffer) flushPage(id disk.PageID) error {
 	b.mu.Unlock()
 
 	shadowID := disk.NewPageID(ShadowFileName, shadowPageNum)
-	shadowPage, err := writer.ClonePage(shadowID, page)
+	shadowPage, err := clonePage(shadowID, page)
 	if err != nil {
 		return err
 	}
@@ -183,7 +181,7 @@ func (b *Buffer) flushPage(id disk.PageID) error {
 		Entry: entry{
 			Sequence:      sequence,
 			ShadowPageNum: shadowPageNum,
-			Checksum:      recovery.Checksum(page.Data()),
+			Checksum:      checksum(page.Data()),
 		},
 	}
 	encoded, err := r.Encode()

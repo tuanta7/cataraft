@@ -163,3 +163,4 @@ fabric.properties
 buf/
 .env
 .data/
+tmp/

@@ -1,4 +1,4 @@
-package cow
+package copyonwrite
 
 import (
 	"bytes"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/tuanta7/cataraft/internal/config"
 	"github.com/tuanta7/cataraft/internal/storage/disk"
-	"github.com/tuanta7/cataraft/internal/storage/recovery"
 )
 
 type entry struct {
@@ -30,7 +29,7 @@ func (r *record) Decode(body []byte) error {
 	}
 
 	expectedChecksum := config.ByteOrder.Uint32(body[:ChecksumFieldSize])
-	if recovery.Checksum(body[ChecksumFieldSize:]) != expectedChecksum {
+	if checksum(body[ChecksumFieldSize:]) != expectedChecksum {
 		return errors.New("copy-on-write manifest checksum mismatch")
 	}
 
@@ -126,7 +125,7 @@ func (r *record) Encode() ([]byte, error) {
 	encoded := buf.Bytes()
 	config.ByteOrder.PutUint32(
 		encoded[LengthFieldSize:HeaderSize],
-		recovery.Checksum(encoded[HeaderSize:]),
+		checksum(encoded[HeaderSize:]),
 	)
 	return encoded, nil
 }
