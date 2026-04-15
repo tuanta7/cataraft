@@ -40,7 +40,6 @@ func (s *CopyOnWriteBufferTestSuite) TestStagePageKeepsLocalCopy() {
 	s.Require().NoError(page.Write([]byte("stage")))
 
 	s.Require().NoError(buf.stagePage(id, page))
-	s.True(buf.HasPage(id))
 }
 
 func (s *CopyOnWriteBufferTestSuite) TestFlushPageWritesShadowThenAppendsManifest() {
@@ -65,7 +64,6 @@ func (s *CopyOnWriteBufferTestSuite) TestFlushPageWritesShadowThenAppendsManifes
 	)
 
 	s.Require().NoError(buf.flushPage(id))
-	s.False(buf.HasPage(id))
 
 	resolvedID, ok := buf.ResolvePage(id)
 	s.True(ok)

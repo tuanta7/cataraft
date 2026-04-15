@@ -9,6 +9,10 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
+const (
+	PageSize = 8192 // 8KB
+)
+
 var (
 	ByteOrder = binary.LittleEndian
 )
@@ -35,7 +39,7 @@ func LoadConfig() (Config, error) {
 		if runtime.GOOS == "linux" {
 			cfg.DataDir = "/var/lib/cataraft"
 		} else {
-			return cfg, errors.New("CRDATA not set")
+			return cfg, errors.New("DATA_DIR not set")
 		}
 	}
 

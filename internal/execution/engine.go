@@ -17,7 +17,7 @@ type Flusher interface {
 
 type Engine struct {
 	parser  *query.Parser
-	index   Index
+	index   Index // single table
 	flusher Flusher
 }
 

@@ -71,14 +71,6 @@ func NewBuffer(store Store) (*Buffer, error) {
 	return buf, nil
 }
 
-func (b *Buffer) HasPage(id disk.PageID) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	_, ok := b.pages[id]
-	return ok
-}
-
 func (b *Buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 	if err := id.Validate(); err != nil {
 		return nil, err
@@ -220,14 +212,6 @@ func (b *Buffer) FlushAll() error {
 	}
 
 	return nil
-}
-
-func (b *Buffer) RecoverPage(id disk.PageID) error {
-	if err := id.Validate(); err != nil {
-		return err
-	}
-
-	return b.RecoverAll()
 }
 
 func (b *Buffer) RecoverAll() error {

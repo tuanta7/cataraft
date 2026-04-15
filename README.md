@@ -1,6 +1,6 @@
 # Cataraft
 
-Cataraft is a simple distributed database project written in Go. The project scope is intentionally narrow:
+Cataraft is a simple distributed key-value store written in Go. The project scope is intentionally narrow:
 
 - B+ tree for ordered key/value storage
 - LRU buffer pool for page caching
@@ -25,6 +25,22 @@ B+ Tree
 ```
 
 The B+ tree only talks to the buffer layer. The buffer loads and evicts pages through the copy-on-write store. The copy-on-write store persists page versions into shadow pages and records the latest version in a manifest.
+
+## Persistence And Recovery
+
+Persistence is explicit: writes become durable when the system flushes dirty pages.
+
+Recovery is built on copy-on-write metadata:
+
+- page updates are written to shadow pages
+- the manifest records the latest durable page version
+- startup rebuilds the in-memory page index from the manifest
+
+At the system boundary this is exposed as:
+
+- `Persist()`: flush dirty state to disk
+- `Recover()`: rebuild in-memory state from the durable copy-on-write manifest
+- `OpenSystem(dataDir)`: open an existing store and recover durable state on startup
 
 ## Components
 

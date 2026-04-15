@@ -82,3 +82,26 @@ func (s *LRUBufferTestSuite) TestUnpinAllowsEviction() {
 	s.True(buf.Contains(secondID))
 	s.True(buf.Contains(thirdID))
 }
+
+func (s *LRUBufferTestSuite) TestTouchMakesPageMostRecentlyUsed() {
+	firstID := disk.NewPageID("table.db", 1)
+	secondID := disk.NewPageID("table.db", 2)
+	thirdID := disk.NewPageID("table.db", 3)
+	buf := NewLRUBuffer(2, s.store)
+
+	_, err := buf.ReadPage(firstID)
+	s.Require().NoError(err)
+	_, err = buf.ReadPage(secondID)
+	s.Require().NoError(err)
+
+	// Re-read the first page so the second page becomes the eviction victim.
+	_, err = buf.ReadPage(firstID)
+	s.Require().NoError(err)
+
+	_, err = buf.ReadPage(thirdID)
+	s.Require().NoError(err)
+
+	s.True(buf.Contains(firstID))
+	s.False(buf.Contains(secondID))
+	s.True(buf.Contains(thirdID))
+}
