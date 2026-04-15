@@ -32,15 +32,9 @@ Persistence is explicit: writes become durable when the system flushes dirty pag
 
 Recovery is built on copy-on-write metadata:
 
-- page updates are written to shadow pages
-- the manifest records the latest durable page version
-- startup rebuilds the in-memory page index from the manifest
-
-At the system boundary this is exposed as:
-
-- `Persist()`: flush dirty state to disk
-- `Recover()`: rebuild in-memory state from the durable copy-on-write manifest
-- `OpenSystem(dataDir)`: open an existing store and recover durable state on startup
+- Page updates are written to shadow pages
+- The manifest records the latest durable page version
+- Startup rebuilds the in-memory page index from the manifest
 
 ## Components
 
@@ -52,8 +46,6 @@ At the system boundary this is exposed as:
 ## Getting Started
 
 ```bash
-go run ./cmd/cataraft
-
 go run ./cmd/cataraft exec SET greeting hello
 go run ./cmd/cataraft exec GET greeting
 ```

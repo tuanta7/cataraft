@@ -39,6 +39,7 @@ func (r *record) Decode(body []byte) error {
 	if err != nil {
 		return err
 	}
+
 	if recordType != RecordTypePageVersion {
 		return fmt.Errorf("unsupported copy-on-write record type %d", recordType)
 	}
@@ -46,29 +47,37 @@ func (r *record) Decode(body []byte) error {
 	if err := binary.Read(reader, config.ByteOrder, &r.Entry.Sequence); err != nil {
 		return err
 	}
+
 	var shadowPageNum uint64
 	if err := binary.Read(reader, config.ByteOrder, &shadowPageNum); err != nil {
 		return err
 	}
+
 	if shadowPageNum > math.MaxInt64 {
 		return errors.New("copy-on-write shadow page number exceeds int64")
 	}
+
 	r.Entry.ShadowPageNum = int64(shadowPageNum)
+
 	if err := binary.Read(reader, config.ByteOrder, &r.Entry.Checksum); err != nil {
 		return err
 	}
+
 	var fileNameLen uint16
 	if err := binary.Read(reader, config.ByteOrder, &fileNameLen); err != nil {
 		return err
 	}
+
 	fileName := make([]byte, fileNameLen)
 	if _, err := io.ReadFull(reader, fileName); err != nil {
 		return err
 	}
+
 	var logicalPageNum uint64
 	if err := binary.Read(reader, config.ByteOrder, &logicalPageNum); err != nil {
 		return err
 	}
+	
 	if logicalPageNum > math.MaxInt64 {
 		return errors.New("copy-on-write logical page number exceeds int64")
 	}

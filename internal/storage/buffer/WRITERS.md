@@ -5,6 +5,11 @@ Changes to disk are not instantaneous, and hardware can fail at any moment. A cr
 - **Atomicity**: A write either fully completes or does not happen at all.
 - **Durability**: Once committed, data survives crashes. At least one `fsync` syscall must be called, which forces data from OS buffers to physical disk.
 
+Safe writers can be used without WAL, but in that case, only consistency at the page level is preserved (not transactional correctness)
+
+- Write-Ahead Logging (WAL) is primarily a durability and crash recovery mechanism. It guarantees that all changes can be replayed (redo) or undone (undo) after a crash, which is essential for transactional systems.
+- Safe writer techniques (e.g., Copy-on-Write, Double Write Buffer) are designed to prevent torn or partially written pages, ensuring physical page integrity, but they do not provide logical recovery.
+
 ## 1. Naive Approaches
 
 Reference: [From Files To Databases](https://build-your-own.org/database/01_files)
