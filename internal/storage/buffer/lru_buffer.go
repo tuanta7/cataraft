@@ -26,7 +26,7 @@ func NewLRUBuffer(capacity int, store PageStore, writer DirtyPageWriter) *LRUBuf
 type LRUEvictionPolicy struct {
 	order   *list.List
 	entries map[disk.PageID]*list.Element
-	pinned  map[disk.PageID]struct{}
+	pinned  map[disk.PageID]struct{} // idiomatic set 0 bytes for the value
 }
 
 func NewLRUEvictionPolicy() *LRUEvictionPolicy {
