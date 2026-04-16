@@ -29,7 +29,7 @@ func (r *record) Decode(body []byte) error {
 	}
 
 	expectedChecksum := config.ByteOrder.Uint32(body[:ChecksumFieldSize])
-	if checksum(body[ChecksumFieldSize:]) != expectedChecksum {
+	if disk.Checksum(body[ChecksumFieldSize:]) != expectedChecksum {
 		return errors.New("copy-on-write manifest checksum mismatch")
 	}
 
@@ -77,7 +77,7 @@ func (r *record) Decode(body []byte) error {
 	if err := binary.Read(reader, config.ByteOrder, &logicalPageNum); err != nil {
 		return err
 	}
-	
+
 	if logicalPageNum > math.MaxInt64 {
 		return errors.New("copy-on-write logical page number exceeds int64")
 	}
@@ -134,7 +134,7 @@ func (r *record) Encode() ([]byte, error) {
 	encoded := buf.Bytes()
 	config.ByteOrder.PutUint32(
 		encoded[LengthFieldSize:HeaderSize],
-		checksum(encoded[HeaderSize:]),
+		disk.Checksum(encoded[HeaderSize:]),
 	)
 	return encoded, nil
 }

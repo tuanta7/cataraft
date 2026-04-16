@@ -23,10 +23,8 @@ mock-install:
 	$(MOCKGEN) --version
 
 mock-gen:
-	$(MOCKGEN) 	-source=./internal/storage/buffer/copyonwrite/buffer.go \
-			  	-destination=./mocks/copy_on_write.go \
-				-package=mock \
-				-mock_names Store=CopyOnWriteStore
+	$(MOCKGEN) -source=./internal/storage/buffer/copyonwrite/buffer.go -destination=./mocks/copy_on_write_store.go \
+			   -package=mock -mock_names Store=CopyOnWriteStore
 
 endian-check:
 	lscpu | grep "Byte Order"

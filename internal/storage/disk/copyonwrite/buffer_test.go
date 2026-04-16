@@ -177,13 +177,13 @@ func encodeCopyOnWriteRecordForTest(id disk.PageID, sequence uint64, shadowPageN
 	_ = buf.WriteByte(recordTypePageVersion)
 	_ = binary.Write(buf, config.ByteOrder, sequence)
 	_ = binary.Write(buf, config.ByteOrder, uint64(shadowPageNum))
-	_ = binary.Write(buf, config.ByteOrder, checksum(page.Data()))
+	_ = binary.Write(buf, config.ByteOrder, disk.Checksum(page.Data()))
 	_ = binary.Write(buf, config.ByteOrder, uint16(len(fileName)))
 	_, _ = buf.WriteString(fileName)
 	_ = binary.Write(buf, config.ByteOrder, uint64(id.PageNum()))
 
 	encoded := buf.Bytes()
-	config.ByteOrder.PutUint32(encoded[lengthFieldSize:headerSize], checksum(encoded[headerSize:]))
+	config.ByteOrder.PutUint32(encoded[lengthFieldSize:headerSize], disk.Checksum(encoded[headerSize:]))
 	return encoded
 }
 

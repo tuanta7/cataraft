@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/tuanta7/cataraft/internal/storage/buffer"
-	"github.com/tuanta7/cataraft/internal/storage/buffer/copyonwrite"
 	"github.com/tuanta7/cataraft/internal/storage/disk"
+	"github.com/tuanta7/cataraft/internal/storage/disk/copyonwrite"
 )
 
 type BPlusTreeTestSuite struct {

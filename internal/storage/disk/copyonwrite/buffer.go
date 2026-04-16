@@ -78,7 +78,7 @@ func (b *Buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 
 	b.mu.Lock()
 	if page, ok := b.pages[id]; ok {
-		staged, err := clonePage(id, page)
+		staged, err := disk.ClonePage(id, page)
 		b.mu.Unlock()
 		if err != nil {
 			return nil, err
@@ -98,11 +98,11 @@ func (b *Buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
 	if err != nil {
 		return nil, err
 	}
-	if checksum(page.Data()) != entry.Checksum {
+	if disk.Checksum(page.Data()) != entry.Checksum {
 		return nil, fmt.Errorf("copy-on-write checksum mismatch for %q:%d", id.FileName(), id.PageNum())
 	}
 
-	current, err := clonePage(id, page)
+	current, err := disk.ClonePage(id, page)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (b *Buffer) stagePage(id disk.PageID, page *disk.Page) error {
 	if err := id.Validate(); err != nil {
 		return err
 	}
-	staged, err := clonePage(id, page)
+	staged, err := disk.ClonePage(id, page)
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func (b *Buffer) flushPage(id disk.PageID) error {
 	b.mu.Unlock()
 
 	shadowID := disk.NewPageID(ShadowFileName, shadowPageNum)
-	shadowPage, err := clonePage(shadowID, page)
+	shadowPage, err := disk.ClonePage(shadowID, page)
 	if err != nil {
 		return err
 	}
@@ -173,7 +173,7 @@ func (b *Buffer) flushPage(id disk.PageID) error {
 		Entry: entry{
 			Sequence:      sequence,
 			ShadowPageNum: shadowPageNum,
-			Checksum:      checksum(page.Data()),
+			Checksum:      disk.Checksum(page.Data()),
 		},
 	}
 	encoded, err := r.Encode()
