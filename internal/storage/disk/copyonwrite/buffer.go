@@ -11,12 +11,10 @@ import (
 )
 
 const (
-	// ShadowFileName is the file name for the copy-on-write shadow pages,
-	// which are used to store the current state of the pages before they are written to the main log.
+	// ShadowFileName is the file name for the CoW shadow pages that store the new copy of the modified page or file.
 	ShadowFileName = "copyonwrite.pages"
 
-	// ManifestFileName is the file name for the copy-on-write manifest,
-	// which is used to store the sequence number and LSN of each page that has been written to the main log.
+	// ManifestFileName is the file name for the CoW manifest that store references to actual data files.
 	ManifestFileName = "copyonwrite.manifest"
 
 	RecordTypePageVersion uint8 = 1

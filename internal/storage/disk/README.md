@@ -5,11 +5,6 @@ Changes to disk are not instantaneous, and hardware can fail at any moment. A cr
 - **Atomicity**: A write either fully completes or does not happen at all.
 - **Durability**: Once committed, data survives crashes. At least one `fsync` syscall must be called, which forces data from OS buffers to physical disk.
 
-Safe writers can be used without WAL, but in that case, only consistency at the page level is preserved (not transactional correctness)
-
-- Write-Ahead Logging (WAL) is primarily a durability and crash recovery mechanism. It guarantees that all changes can be replayed (redo) or undone (undo) after a crash, which is essential for transactional systems.
-- Safe writer techniques (e.g., Copy-on-Write, Double Write Buffer) are designed to prevent torn or partially written pages, ensuring physical page integrity, but they do not provide logical recovery.
-
 ## 1. Naive Approaches
 
 Reference: [From Files To Databases](https://build-your-own.org/database/01_files)
@@ -33,17 +28,45 @@ Replacing data atomically by renaming files is only readers-writer atomic, it is
 - The directory entry (metadata record that maps a filename to the underlying file data) update produced by the rename may not be flushed to disk before a crash occurs. What the disk contains after a crash is unpredictable.
 - An extra fsync on the parent directory is required after the rename for durability.
 
-## 2. Copy-on-write
+## 2. Copy-on-Write ()
 
-Copy-on-write atomically switches everything to the new version.
+Copy-on-Write atomically switches everything to the new version. CoW is a prevention strategy, it never allows a corrupt state to be visible at all.
+
+- First write new version to new block
+- Then atomically update the pointer (single sector write)
+- If crash happens before pointer swap, old page is still valid. No torn page possible
+- If crash happens after pointer swap, new page is fully written. Also fine
+
+A **failed write** in CoW means the pointer swap never happened, which leaves the database exactly as it was before.
 
 > [!NOTE]
-> Copy-on-Write already provides crash safety at the page level, so WAL is not required for correctness. If WAL is still present, it is usually introduced for operational or performance reasons (faster recovery, change-data-capture, etc.).
+> CoW already provides crash safety at the page level, so WAL is not required for correctness. If WAL is still present, it is usually introduced for operational or performance reasons (faster recovery, change-data-capture, etc.).
 
-## 3. Double-write Buffer (MySQL)
+### Considerations
+
+- High write amplification on deep trees
+
+## 3. Double-Write Buffer (MySQL)
 
 Reference: [Innodb Double Write](https://www.percona.com/blog/innodb-double-write/)
 
-This technique is used by database engines like MySQL InnoDB to solve the torn page problem during crash or power loss.
+Double-Write Buffer is used by database engines like MySQL InnoDB to solve the torn page problem during crash or power loss. DW is a repair strategy, it fixes the page after crash, then re-applies changes.
+
+- First write full page to doublewrite buffer (sequential I/O + fsync to ensure durability)
+- Then write page to its actual location (in-place edit, crash possible mid-write leads to torn page)
+- Recovery if torn page detected at startup
+
+DW has a more complex failure surface because it has more steps. A write can fail at several distinct points:
+
+- Failure before the DW buffer is fully written
+- Failure after DW buffer written, before actual page write begins
+- Failure mid-way through actual page write
+
+### DW's Recovery Problem
+
+After a crash, the doublewrite buffer has the page as it was when the flush began, not the latest committed state.
+
+- DW is used to restore the page to a clean state
+- WAL replays the committed transactions on top of the restored page
 
 ## 4. Full Page Writes (PostgreSQL)

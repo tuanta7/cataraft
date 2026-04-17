@@ -29,8 +29,10 @@ func (s *BPlusTreeTestSuite) SetupTest() {
 
 	s.adapter, err = disk.NewAdapter(s.baseDir)
 	s.Require().NoError(err)
+
 	s.cow, err = copyonwrite.NewBuffer(s.adapter)
 	s.Require().NoError(err)
+
 	s.buf = buffer.NewLRUBuffer(128, s.cow)
 
 	tree, err := New(4, s.buf)

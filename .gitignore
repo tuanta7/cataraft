@@ -161,8 +161,11 @@ fabric.properties
 .vscode/
 .idea/
 .data/
+
 buf/
 tmp/
 
 .env
 .codex
+
+cataraft
