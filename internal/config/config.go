@@ -2,8 +2,8 @@ package config
 
 import (
 	"encoding/binary"
-	"errors"
-	"runtime"
+	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -36,11 +36,12 @@ func LoadConfig(filenames ...string) (Config, error) {
 	}
 
 	if cfg.DataDir == "" {
-		if runtime.GOOS == "linux" {
-			cfg.DataDir = "~/data/cataraft"
-		} else {
-			return cfg, errors.New("CATARAFT_DATA_DIR not set")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return cfg, err
 		}
+
+		cfg.DataDir = filepath.Join(home, "cataraft", "data")
 	}
 
 	return cfg, nil
