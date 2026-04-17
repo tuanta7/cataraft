@@ -8,4 +8,4 @@ The simplest possible indexing strategy is keeping an in-memory hash map where e
 
 ## 2. LSM Tree
 
-## 3. B-Tree (or B+Tree)
+## 3. B-Tree & B+Tree

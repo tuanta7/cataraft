@@ -1,5 +1,7 @@
 .PHONY: buf
 BUF_VERSION?=1.64.0
+GOBIN:=$(shell go env GOPATH)/bin
+MOCKGEN:=$(GOBIN)/mockgen
 
 build:
 	go build ./cmd/cataraft
@@ -18,12 +20,11 @@ buf-gen:
 
 mock-install:
 	go install go.uber.org/mock/mockgen@latest
-	#export PATH=$PATH:$(go env GOPATH)/bin
-	mockgen --version
+	$(MOCKGEN) --version
 
 mock-gen:
-	mockgen -source=./storage/storage.go -destination=./mocks/storage.go -package=mock
-	# mockgen -source=./raft/raft.go -destination=./mocks/raft.go -package=mock
+	$(MOCKGEN) -source=./internal/storage/disk/copyonwrite/adapter.go -destination=./mocks/copy_on_write_store.go \
+			   -package=mock -mock_names Store=CopyOnWriteStore
 
 endian-check:
 	lscpu | grep "Byte Order"

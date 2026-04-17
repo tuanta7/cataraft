@@ -1,142 +1,47 @@
 # Cataraft
 
-Cataraft is a simple distributed database project written in Go. The first phase focuses on building a small storage engine with crash recovery and replication primitives rather than a full SQL database.
+Cataraft is a simple distributed key-value store written in Go. The project scope is intentionally narrow:
 
-The initial system is intended to support:
+- B+ tree for ordered key/value storage
+- LRU buffer pool for page caching
+- Copy-on-write page persistence for crash-safe page updates
+- Disk adapter for page and file primitives
+- Raft consensus
 
-- A B+ tree storage/index structure
-- Double-write protection for safer page persistence
-- Write-ahead logging (WAL) for crash recovery
-- An LRU-managed buffer pool
-- Raft consensus for horizontal scaling and replicated state
+The project does not include:
 
-The short-term target is a minimal but coherent database core that can safely persist data on one node and evolve into a replicated multi-node system.
+- WAL
+- double-write/full-page-write 
+- SQL/query planning layers
+- alternate index types
 
-## High-level Architecture
+## Architecture
 
-- The B+ tree never touches the disk adapter directly; it only speaks to the Buffer Pool.
-- The WAL and Double-Write Buffer both reach the Disk Adapter but through separate file handles
-
-```mermaid
-flowchart TD
-    client[Client / CLI]
-    query[Query / Execution]
-    bptree[B+ Tree access/index path]
-    buffer[Buffer Pool Layer<br/>CoreBuffer + LRU eviction policy]
-    flush[Dirty Page Flush]
-    reads[Page Cache Reads]
-    logger[Recovery / WAL<br/>append log + fsync]
-    dw[Double-Write Buffer<br/>temporary safe page copy]
-    disk[Disk Adapter<br/>page/file primitives]
-    machine[Machine Disk<br/>data files + logger log]
-
-    client --> query
-    query --> bptree
-    bptree --> buffer
-    buffer --> flush
-    buffer --> reads
-    flush --> logger
-    flush --> dw
-    reads --> disk
-    logger --> disk
-    dw --> disk
-    disk --> machine
+```text
+B+ Tree
+  -> LRU Buffer
+     -> Copy-On-Write Store
+        -> Disk Adapter
 ```
 
-### Write Path
+The B+ tree only talks to the buffer layer. The buffer loads and evicts pages through the copy-on-write store. The copy-on-write store persists page versions into shadow pages and records the latest version in a manifest.
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant T as B+ Tree
-    participant B as Buffer Pool
-    participant W as WAL
-    participant X as Double-Write
-    participant D as Disk Adapter
-    participant R as Raft
+## Persistence And Recovery
 
-    C->>T: write request
-    T->>B: load or create target page
-    B->>W: append page mutation
-    W-->>B: return LSN
-    B-->>T: page updated in memory
-    T->>R: replicate command
-    B->>W: ensure WAL is durable before flush
-    W->>D: fsync WAL
-    B->>X: copy page into double-write area
-    X->>D: write + fsync double-write buffer
-    B->>D: write dirty page
-    D-->>B: page persisted to primary location
-```
+Persistence is explicit: writes become durable when the system flushes dirty pages.
 
-### Crash Recovery With Double-Write
+Recovery is built on copy-on-write metadata:
 
-```mermaid
-sequenceDiagram
-    participant S as Startup / Recovery
-    participant D as Disk Adapter
-    participant X as Double-Write Area
-    participant P as Primary Data Pages
-    participant W as WAL
-
-    S->>D: open database files
-    S->>X: scan double-write buffer
-    X-->>S: pages that were mid-flush before crash
-    S->>P: restore any torn or incomplete primary pages
-    S->>W: scan WAL records
-    W-->>S: redo records after last durable page state
-    S->>P: replay remaining page updates
-    S-->>D: database returns to a consistent state
-```
-
-### Replication View
-
-```mermaid
-flowchart LR
-    subgraph A[Node A]
-        araft[Raft node]
-        awal[local WAL]
-        abuffer[buffer]
-        adisk[disk]
-        araft --> awal --> abuffer --> adisk
-    end
-
-    subgraph B[Node B]
-        braft[Raft node]
-        bwal[local WAL]
-        bbuffer[buffer]
-        bdisk[disk]
-        braft --> bwal --> bbuffer --> bdisk
-    end
-
-    subgraph C[Node C]
-        craft[Raft node]
-        cwal[local WAL]
-        cbuffer[buffer]
-        cdisk[disk]
-        craft --> cwal --> cbuffer --> cdisk
-    end
-
-    araft <-->|Raft RPCs| braft
-    braft <-->|Raft RPCs| craft
-    araft <-->|Raft RPCs| craft
-```
+- Page updates are written to shadow pages
+- The manifest records the latest durable page version
+- Startup rebuilds the in-memory page index from the manifest
 
 ## Getting Started
 
 ```bash
-go run ./cmd/cataraft
+go run ./cmd/cataraft exec SET greeting hello
+go run ./cmd/cataraft exec GET greeting
 ```
-
-The process expects a data directory through `CATA_DATA`. On Linux, it falls back to `/var/lib/cataraft` when the variable is not set.
-
-```bash
-CATA_DATA=/tmp/cataraft go run ./cmd/cataraft
-```
-
-## Codex
-
-- [Custom instructions with AGENTS.md](https://developers.openai.com/codex/guides/agents-md)
 
 ## References
 

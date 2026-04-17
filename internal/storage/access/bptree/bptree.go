@@ -10,7 +10,6 @@ import (
 
 	"github.com/tuanta7/cataraft/internal/config"
 	"github.com/tuanta7/cataraft/internal/storage/disk"
-	"github.com/tuanta7/cataraft/internal/storage/index"
 )
 
 const (
@@ -23,7 +22,19 @@ const (
 	nodeMagic = "BPTNODE1"
 )
 
-var ErrKeyNotFound = errors.New("b+ tree key not found")
+var (
+	ErrKeyNotFound = errors.New("b+ tree key not found")
+)
+
+type Buffer interface {
+	ReadPage(id disk.PageID) (*disk.Page, error)
+	WritePage(id disk.PageID, newData []byte) error
+	Flush(id disk.PageID) error
+	FlushAll() error
+	Pin(id disk.PageID) error
+	Unpin(id disk.PageID) error
+	Contains(id disk.PageID) bool
+}
 
 type Entry struct {
 	Key   []byte
@@ -37,10 +48,10 @@ type BPlusTree struct {
 	nodes  map[uint64]*node
 	length int
 	nextID atomic.Uint64
-	buffer index.Buffer
+	buffer Buffer
 }
 
-func New(order int, buffer index.Buffer) (*BPlusTree, error) {
+func New(order int, buffer Buffer) (*BPlusTree, error) {
 	if order < 3 {
 		return nil, errors.New("b+ tree order must be at least 3")
 	}

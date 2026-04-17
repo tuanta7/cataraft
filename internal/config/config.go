@@ -2,11 +2,15 @@ package config
 
 import (
 	"encoding/binary"
-	"errors"
-	"runtime"
+	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+)
+
+const (
+	PageSize = 8192 // 8KB
 )
 
 var (
@@ -18,25 +22,26 @@ type Config struct {
 	DataDir  string `envconfig:"DATA_DIR"`
 }
 
-func LoadConfig() (Config, error) {
+func LoadConfig(filenames ...string) (Config, error) {
 	var cfg Config
 
-	err := godotenv.Load()
-	if err != nil {
-		return cfg, err
+	if len(filenames) > 0 {
+		if err := godotenv.Load(filenames...); err != nil {
+			return cfg, err
+		}
 	}
 
-	err = envconfig.Process("CATARAFT", &cfg)
-	if err != nil {
+	if err := envconfig.Process("CATARAFT", &cfg); err != nil {
 		return cfg, err
 	}
 
 	if cfg.DataDir == "" {
-		if runtime.GOOS == "linux" {
-			cfg.DataDir = "/var/lib/cataraft"
-		} else {
-			return cfg, errors.New("CRDATA not set")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return cfg, err
 		}
+
+		cfg.DataDir = filepath.Join(home, "cataraft", "data")
 	}
 
 	return cfg, nil
