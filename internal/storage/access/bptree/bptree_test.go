@@ -16,7 +16,7 @@ type BPlusTreeTestSuite struct {
 	baseDir string
 	adapter *disk.Adapter
 	buf     *buffer.LRUBuffer
-	cow     *copyonwrite.Buffer
+	cow     *copyonwrite.Adapter
 }
 
 func TestBPlusTreeTestSuite(t *testing.T) {
@@ -30,7 +30,7 @@ func (s *BPlusTreeTestSuite) SetupTest() {
 	s.adapter, err = disk.NewAdapter(s.baseDir)
 	s.Require().NoError(err)
 
-	s.cow, err = copyonwrite.NewBuffer(s.adapter)
+	s.cow, err = copyonwrite.NewAdapter(s.adapter)
 	s.Require().NoError(err)
 
 	s.buf = buffer.NewLRUBuffer(128, s.cow)
@@ -129,7 +129,7 @@ func (s *BPlusTreeTestSuite) TestReloadFromDiskViaBuffer() {
 	reopenAdapter, err := disk.NewAdapter(s.baseDir)
 	s.Require().NoError(err)
 	s.adapter = reopenAdapter
-	s.cow, err = copyonwrite.NewBuffer(s.adapter)
+	s.cow, err = copyonwrite.NewAdapter(s.adapter)
 	s.Require().NoError(err)
 	s.buf = buffer.NewLRUBuffer(128, s.cow)
 

@@ -42,24 +42,24 @@ type Store interface {
 	FileSize(fn string) (int64, error)
 }
 
-type Buffer struct {
+type Adapter struct {
 	mu           sync.Mutex
 	store        Store
-	pages        map[disk.PageID]*disk.Page
-	index        map[disk.PageID]entry
+	basePages    map[disk.PageID]*disk.Page
+	shadowPages  map[disk.PageID]entry
 	nextSequence uint64
 	nextShadow   int64
 }
 
-func NewBuffer(store Store) (*Buffer, error) {
+func NewAdapter(store Store) (*Adapter, error) {
 	if store == nil {
 		return nil, errors.New("copy-on-write disk adapter is required")
 	}
 
-	buf := &Buffer{
+	buf := &Adapter{
 		store:        store,
-		pages:        make(map[disk.PageID]*disk.Page),
-		index:        make(map[disk.PageID]entry),
+		basePages:    make(map[disk.PageID]*disk.Page),
+		shadowPages:  make(map[disk.PageID]entry),
 		nextSequence: 1,
 	}
 	if err := buf.RecoverAll(); err != nil {
@@ -69,88 +69,95 @@ func NewBuffer(store Store) (*Buffer, error) {
 	return buf, nil
 }
 
-func (b *Buffer) ReadPage(id disk.PageID) (*disk.Page, error) {
+func (a *Adapter) ReadPage(id disk.PageID) (*disk.Page, error) {
 	if err := id.Validate(); err != nil {
 		return nil, err
 	}
 
-	b.mu.Lock()
-	if page, ok := b.pages[id]; ok {
+	a.mu.Lock()
+	if page, ok := a.basePages[id]; ok {
 		staged, err := disk.ClonePage(id, page)
-		b.mu.Unlock()
+		a.mu.Unlock()
 		if err != nil {
 			return nil, err
 		}
+
 		staged.MarkClean()
 		return staged, nil
 	}
-	entry, ok := b.index[id]
-	b.mu.Unlock()
 
+	shadowPageEntry, ok := a.shadowPages[id]
+	a.mu.Unlock()
 	if !ok {
-		return b.store.ReadPage(id)
+		// read original page from disk
+		return a.store.ReadPage(id)
 	}
 
-	shadowID := disk.NewPageID(ShadowFileName, entry.ShadowPageNum)
-	page, err := b.store.ReadPage(shadowID)
+	shadowID := disk.NewPageID(ShadowFileName, shadowPageEntry.ShadowPageNum)
+	shadowPage, err := a.store.ReadPage(shadowID)
 	if err != nil {
 		return nil, err
 	}
-	if disk.Checksum(page.Data()) != entry.Checksum {
+
+	if disk.Checksum(shadowPage.Data()) != shadowPageEntry.Checksum {
 		return nil, fmt.Errorf("copy-on-write checksum mismatch for %q:%d", id.FileName(), id.PageNum())
 	}
 
-	current, err := disk.ClonePage(id, page)
+	current, err := disk.ClonePage(id, shadowPage)
 	if err != nil {
 		return nil, err
 	}
+
 	current.MarkClean()
 	return current, nil
 }
 
-func (b *Buffer) WritePage(id disk.PageID, page *disk.Page) error {
-	if err := b.stagePage(id, page); err != nil {
+func (a *Adapter) WritePage(id disk.PageID, page *disk.Page) error {
+	if err := a.stagePage(id, page); err != nil {
 		return err
 	}
 
-	return b.flushPage(id)
+	return a.flushPage(id)
 }
 
-func (b *Buffer) stagePage(id disk.PageID, page *disk.Page) error {
+func (a *Adapter) stagePage(id disk.PageID, page *disk.Page) error {
 	if page == nil {
 		return errors.New("page is required")
 	}
+
 	if err := id.Validate(); err != nil {
 		return err
 	}
+
 	staged, err := disk.ClonePage(id, page)
 	if err != nil {
 		return err
 	}
 
-	b.mu.Lock()
-	b.pages[id] = staged
-	b.mu.Unlock()
+	a.mu.Lock()
+	a.basePages[id] = staged
+	a.mu.Unlock()
 
 	return nil
 }
 
-func (b *Buffer) flushPage(id disk.PageID) error {
+func (a *Adapter) flushPage(id disk.PageID) error {
 	if err := id.Validate(); err != nil {
 		return err
 	}
 
-	b.mu.Lock()
-	page, ok := b.pages[id]
+	a.mu.Lock()
+	page, ok := a.basePages[id]
 	if !ok {
-		b.mu.Unlock()
+		a.mu.Unlock()
 		return fmt.Errorf("page %q:%d is not staged", id.FileName(), id.PageNum())
 	}
-	sequence := b.nextSequence
-	b.nextSequence++
-	shadowPageNum := b.nextShadow
-	b.nextShadow++
-	b.mu.Unlock()
+
+	sequence := a.nextSequence
+	a.nextSequence++
+	shadowPageNum := a.nextShadow
+	a.nextShadow++
+	a.mu.Unlock()
 
 	shadowID := disk.NewPageID(ShadowFileName, shadowPageNum)
 	shadowPage, err := disk.ClonePage(shadowID, page)
@@ -158,11 +165,11 @@ func (b *Buffer) flushPage(id disk.PageID) error {
 		return err
 	}
 
-	if err = b.store.WritePage(shadowID, shadowPage); err != nil {
+	if err = a.store.WritePage(shadowID, shadowPage); err != nil {
 		return err
 	}
 
-	if err = b.store.SyncFile(ShadowFileName); err != nil {
+	if err = a.store.SyncFile(ShadowFileName); err != nil {
 		return err
 	}
 
@@ -179,32 +186,32 @@ func (b *Buffer) flushPage(id disk.PageID) error {
 		return err
 	}
 
-	if _, err = b.store.AppendFile(ManifestFileName, encoded); err != nil {
+	if _, err = a.store.AppendFile(ManifestFileName, encoded); err != nil {
 		return err
 	}
 
-	if err = b.store.SyncFile(ManifestFileName); err != nil {
+	if err = a.store.SyncFile(ManifestFileName); err != nil {
 		return err
 	}
 
-	b.mu.Lock()
-	b.index[id] = r.Entry
-	delete(b.pages, id)
-	b.mu.Unlock()
+	a.mu.Lock()
+	a.shadowPages[id] = r.Entry
+	delete(a.basePages, id)
+	a.mu.Unlock()
 
 	return nil
 }
 
-func (b *Buffer) FlushAll() error {
-	b.mu.Lock()
-	ids := make([]disk.PageID, 0, len(b.pages))
-	for id := range b.pages {
+func (a *Adapter) FlushAll() error {
+	a.mu.Lock()
+	ids := make([]disk.PageID, 0, len(a.basePages))
+	for id := range a.basePages {
 		ids = append(ids, id)
 	}
-	b.mu.Unlock()
+	a.mu.Unlock()
 
 	for _, id := range ids {
-		if err := b.flushPage(id); err != nil {
+		if err := a.flushPage(id); err != nil {
 			return err
 		}
 	}
@@ -212,36 +219,36 @@ func (b *Buffer) FlushAll() error {
 	return nil
 }
 
-func (b *Buffer) RecoverAll() error {
-	index, nextShadow, nextSequence, err := b.loadManifestIndex()
+func (a *Adapter) RecoverAll() error {
+	index, nextShadow, nextSequence, err := a.loadManifestIndex()
 	if err != nil {
 		return err
 	}
 
-	b.mu.Lock()
-	b.index = index
-	b.pages = make(map[disk.PageID]*disk.Page)
-	b.nextShadow = nextShadow
-	b.nextSequence = nextSequence
-	b.mu.Unlock()
+	a.mu.Lock()
+	a.shadowPages = index
+	a.basePages = make(map[disk.PageID]*disk.Page)
+	a.nextShadow = nextShadow
+	a.nextSequence = nextSequence
+	a.mu.Unlock()
 
 	return nil
 }
 
-func (b *Buffer) ResolvePage(id disk.PageID) (disk.PageID, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+func (a *Adapter) ResolvePage(id disk.PageID) (disk.PageID, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
-	entry, ok := b.index[id]
+	shadowPageEntry, ok := a.shadowPages[id]
 	if !ok {
 		return disk.PageID{}, false
 	}
 
-	return disk.NewPageID(ShadowFileName, entry.ShadowPageNum), true
+	return disk.NewPageID(ShadowFileName, shadowPageEntry.ShadowPageNum), true
 }
 
-func (b *Buffer) loadManifestIndex() (map[disk.PageID]entry, int64, uint64, error) {
-	size, err := b.store.FileSize(ManifestFileName)
+func (a *Adapter) loadManifestIndex() (map[disk.PageID]entry, int64, uint64, error) {
+	size, err := a.store.FileSize(ManifestFileName)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -250,7 +257,7 @@ func (b *Buffer) loadManifestIndex() (map[disk.PageID]entry, int64, uint64, erro
 	nextShadow := int64(0)
 	nextSequence := uint64(1)
 	for offset := int64(0); offset < size; {
-		recordLen, ok, err := b.readManifestRecordLength(offset, size)
+		recordLen, ok, err := a.readManifestRecordLength(offset, size)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -259,7 +266,7 @@ func (b *Buffer) loadManifestIndex() (map[disk.PageID]entry, int64, uint64, erro
 		}
 
 		body := make([]byte, recordLen)
-		n, err := b.store.ReadFileAt(ManifestFileName, offset+LengthFieldSize, body)
+		n, err := a.store.ReadFileAt(ManifestFileName, offset+LengthFieldSize, body)
 		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			return nil, 0, 0, err
 		}
@@ -288,9 +295,9 @@ func (b *Buffer) loadManifestIndex() (map[disk.PageID]entry, int64, uint64, erro
 	return index, nextShadow, nextSequence, nil
 }
 
-func (b *Buffer) readManifestRecordLength(offset, size int64) (uint32, bool, error) {
+func (a *Adapter) readManifestRecordLength(offset, size int64) (uint32, bool, error) {
 	lengthBuf := make([]byte, LengthFieldSize)
-	n, err := b.store.ReadFileAt(ManifestFileName, offset, lengthBuf)
+	n, err := a.store.ReadFileAt(ManifestFileName, offset, lengthBuf)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return 0, false, err
 	}

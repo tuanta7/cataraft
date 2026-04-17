@@ -29,7 +29,7 @@ func main() {
 	}
 	defer slient.Close(diskAdapter)
 
-	copyOnWrite, err := copyonwrite.NewBuffer(diskAdapter)
+	copyOnWrite, err := copyonwrite.NewAdapter(diskAdapter)
 	if err != nil {
 		_ = diskAdapter.Close()
 		slient.PanicOnErr(err)

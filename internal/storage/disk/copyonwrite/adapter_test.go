@@ -118,10 +118,10 @@ func (s *CopyOnWriteBufferTestSuite) TestRecoverAllIgnoresTruncatedManifestTail(
 	s.Equal(disk.NewPageID("copyonwrite.pages", 4), shadowID)
 }
 
-func (s *CopyOnWriteBufferTestSuite) newBuffer() *Buffer {
+func (s *CopyOnWriteBufferTestSuite) newBuffer() *Adapter {
 	s.store.EXPECT().FileSize("copyonwrite.manifest").Return(int64(0), nil)
 
-	buf, err := NewBuffer(s.store)
+	buf, err := NewAdapter(s.store)
 	s.Require().NoError(err)
 	return buf
 }
