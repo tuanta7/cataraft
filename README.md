@@ -36,13 +36,6 @@ Recovery is built on copy-on-write metadata:
 - The manifest records the latest durable page version
 - Startup rebuilds the in-memory page index from the manifest
 
-## Components
-
-- `internal/storage/disk`: page/file I/O
-- `internal/storage/buffer`: LRU page cache
-- `internal/storage/writer/cow`: copy-on-write persistence
-- `internal/storage/index/bptree`: ordered key/value index
-
 ## Getting Started
 
 ```bash

@@ -22,24 +22,24 @@ type Config struct {
 	DataDir  string `envconfig:"DATA_DIR"`
 }
 
-func LoadConfig() (Config, error) {
+func LoadConfig(filenames ...string) (Config, error) {
 	var cfg Config
 
-	err := godotenv.Load()
-	if err != nil {
-		return cfg, err
+	if len(filenames) > 0 {
+		if err := godotenv.Load(filenames...); err != nil {
+			return cfg, err
+		}
 	}
 
-	err = envconfig.Process("CATARAFT", &cfg)
-	if err != nil {
+	if err := envconfig.Process("CATARAFT", &cfg); err != nil {
 		return cfg, err
 	}
 
 	if cfg.DataDir == "" {
 		if runtime.GOOS == "linux" {
-			cfg.DataDir = "/var/lib/cataraft"
+			cfg.DataDir = "~/data/cataraft"
 		} else {
-			return cfg, errors.New("DATA_DIR not set")
+			return cfg, errors.New("CATARAFT_DATA_DIR not set")
 		}
 	}
 

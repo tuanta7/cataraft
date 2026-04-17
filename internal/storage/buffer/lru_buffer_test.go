@@ -105,3 +105,24 @@ func (s *LRUBufferTestSuite) TestTouchMakesPageMostRecentlyUsed() {
 	s.False(buf.Contains(secondID))
 	s.True(buf.Contains(thirdID))
 }
+
+func (s *LRUBufferTestSuite) TestVictimNoEvictablePageWhenAllPinned() {
+	buf := NewLRUBuffer(2, s.store)
+
+	firstID := disk.NewPageID("table.db", 1)
+	secondID := disk.NewPageID("table.db", 2)
+	thirdID := disk.NewPageID("table.db", 3)
+
+	// Fill buffer with two pages; they remain pinned in the buffer.
+	_, err := buf.ReadPage(firstID)
+	s.Require().NoError(err)
+
+	_, err = buf.ReadPage(secondID)
+	s.Require().NoError(err)
+
+	// Accessing a third page requires eviction, but all existing pages are pinned.
+	// This should surface a "no evictable page available" error from Victim/ensureCapacity.
+	_, err = buf.ReadPage(thirdID)
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "no evictable page available")
+}

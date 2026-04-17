@@ -31,20 +31,17 @@ func main() {
 
 	copyOnWrite, err := copyonwrite.NewAdapter(diskAdapter)
 	if err != nil {
-		_ = diskAdapter.Close()
 		slient.PanicOnErr(err)
 	}
 
 	lruBuffer := buffer.NewLRUBuffer(1000, copyOnWrite)
 	tree, err := bptree.New(bptree.DefaultOrder, lruBuffer)
 	if err != nil {
-		_ = diskAdapter.Close()
 		slient.PanicOnErr(err)
 	}
 
 	engine, err := execution.NewEngine(query.NewParser(), tree, lruBuffer)
 	if err != nil {
-		_ = diskAdapter.Close()
 		slient.PanicOnErr(err)
 	}
 

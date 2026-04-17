@@ -23,7 +23,7 @@ mock-install:
 	$(MOCKGEN) --version
 
 mock-gen:
-	$(MOCKGEN) -source=./internal/storage/buffer/copyonwrite/buffer.go -destination=./mocks/copy_on_write_store.go \
+	$(MOCKGEN) -source=./internal/storage/disk/copyonwrite/adapter.go -destination=./mocks/copy_on_write_store.go \
 			   -package=mock -mock_names Store=CopyOnWriteStore
 
 endian-check:
