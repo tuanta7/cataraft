@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"os"
 
 	"github.com/tuanta7/cataraft/internal/config"
@@ -19,31 +20,21 @@ import (
 func main() {
 	logger := monitor.NewLogger("debug")
 	cfg, err := config.LoadConfig()
-	if err != nil {
-		slient.PanicOnErr(err)
-	}
+	slient.PanicOnErr(err)
 
 	diskAdapter, err := disk.NewAdapter(cfg.DataDir)
-	if err != nil {
-		slient.PanicOnErr(err)
-	}
+	slient.PanicOnErr(err)
 	defer slient.Close(diskAdapter)
 
 	copyOnWrite, err := copyonwrite.NewAdapter(diskAdapter)
-	if err != nil {
-		slient.PanicOnErr(err)
-	}
+	slient.PanicOnErr(err)
 
 	lruBuffer := buffer.NewLRUBuffer(1000, copyOnWrite)
 	tree, err := bptree.New(bptree.DefaultOrder, lruBuffer)
-	if err != nil {
-		slient.PanicOnErr(err)
-	}
+	slient.PanicOnErr(err)
 
 	engine, err := execution.NewEngine(query.NewParser(), tree, lruBuffer)
-	if err != nil {
-		slient.PanicOnErr(err)
-	}
+	slient.PanicOnErr(err)
 
 	cmd := &cli.Command{
 		Commands: []*cli.Command{
@@ -55,7 +46,7 @@ func main() {
 		},
 	}
 
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		slient.PanicOnErr(err)
+	if err = cmd.Run(context.Background(), os.Args); err != nil {
+		log.Fatal(err)
 	}
 }

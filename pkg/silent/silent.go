@@ -1,7 +1,6 @@
 package slient
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -12,16 +11,6 @@ import (
 func Close(srv io.Closer) {
 	if err := srv.Close(); err != nil {
 		log.Printf("Error while closing: %s", err)
-	}
-}
-
-type CloserWithContext interface {
-	Close(ctx context.Context) error
-}
-
-func CloseWithContext(srv CloserWithContext, ctx context.Context) {
-	if err := srv.Close(ctx); err != nil {
-		log.Printf("Error while closing: %v", err)
 	}
 }
 
